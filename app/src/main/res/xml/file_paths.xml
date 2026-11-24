@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- notes shared as files (Markdown, backups) are written here first -->
+    <cache-path name="cache" path="shared/" />
+</paths>
