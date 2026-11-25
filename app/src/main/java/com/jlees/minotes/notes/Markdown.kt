@@ -9,7 +9,9 @@ private data class Look(val bold: Boolean, val italic: Boolean, val strike: Bool
 /** A note as Markdown: its title as a heading (when it has one), then its body. */
 fun noteToMarkdown(n: Note): String {
     val body = toMarkdown(n.body)
-    return if (n.title.isBlank()) body else "# ${n.title.trim()}\n\n$body"
+    // no title, but text that opens with a big heading: an empty heading first, so importing it back doesn't take that
+    // line for the title
+    return if (n.title.isNotBlank()) "# ${n.title.trim()}\n\n$body" else if (body.startsWith("# ")) "# \n\n$body" else body
 }
 
 /** [rt] as Markdown. Images become `![](images/<file>)`, as a backup or export folder holds them. */
@@ -136,12 +138,17 @@ private fun escape(s: String, atLineStart: Boolean): String {
 
 // ---------------------------------------------------------------- import
 
-/** A Markdown file as a note: a leading "# " heading becomes its title, else [fallbackTitle] (the file's name). */
+private val UNTITLED_NAME = Regex("Untitled( \\d+)?")
+
+/**
+ * A Markdown file as a note: a leading "# " heading becomes its title, else [fallbackTitle] (the file's name), except the
+ * "Untitled" ("Untitled 2"…) that mi's own export names a note without a title: that one comes back without a title.
+ */
 fun markdownToNote(md: String, fallbackTitle: String, id: String, now: Long): Note {
     val lines = md.replace("\r\n", "\n").trimStart('\n').lines()
     val first = lines.firstOrNull().orEmpty()
     val (title, rest) = if (first.startsWith("# ")) first.removePrefix("# ").trim() to lines.drop(1).dropWhile { it.isBlank() }
-        else fallbackTitle to lines
+        else (if (UNTITLED_NAME.matches(fallbackTitle.trim())) "" else fallbackTitle) to lines
     return Note(id, title, fromMarkdown(rest.joinToString("\n")), created = now, edited = now)
 }
 

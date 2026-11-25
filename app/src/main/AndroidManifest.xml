@@ -26,6 +26,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
             <!-- text shared from another app becomes a new note -->
+            <!-- minotes://new and minotes://append, for automation apps (Tasker): they only add text. Not BROWSABLE, so a
+                 web page can't open them; only an app on the phone can -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="minotes" android:host="new" />
+                <data android:scheme="minotes" android:host="append" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />

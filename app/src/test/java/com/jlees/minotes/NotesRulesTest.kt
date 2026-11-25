@@ -40,9 +40,43 @@ class NotesRulesTest {
         assertEquals(1, daysLeft(note("x", deletedAt = 0), 30 * day - 1))
     }
 
-    @Test fun titleFallsBackToFirstLine() {
-        assertEquals("Groceries", displayTitle(note("a", "", "\n  Groceries \nmilk")))
-        assertEquals("Untitled", displayTitle(note("a", "", "")))
+    // a blank title stays blank: the first line of text is never shown as the title (it's the text's own first line)
+    @Test fun blankTitleStaysBlank() {
+        assertEquals("Untitled", displayTitle(note("a", "", "\n  Groceries \nmilk")))
+        assertEquals("Groceries", displayTitle(note("a", " Groceries ", "milk")))
+        assertNull(cardTitle(note("a", "", "Groceries\nmilk")))
+        assertEquals("Untitled", cardTitle(note("a", "", "  ")))
+        assertEquals(listOf("Groceries", "milk"), previewLines(note("a", "", "Groceries\nmilk"), 5))
+    }
+
+    // ---- requests from outside: shared text, the New Note shortcut, minotes:// links
+    @Test fun readsWhatOtherAppsAsk() {
+        val view = "android.intent.action.VIEW"
+        assertEquals(Incoming.Shared("hi"), incoming("android.intent.action.SEND", "hi", null))
+        assertNull(incoming("android.intent.action.SEND", "  ", null))
+        assertEquals(Incoming.Blank, incoming(NEW_NOTE_ACTION, null, null))
+        assertEquals(Incoming.New("Shop", "milk\neggs"), incoming(view, null, "minotes://new?title=Shop&text=milk%0Aeggs"))
+        assertEquals(Incoming.New("", "just text"), incoming(view, null, "minotes://new?text=just+text"))
+        assertEquals(Incoming.Append("Shop", "bread"), incoming(view, null, "minotes://append?title=%20Shop%20&text=bread"))
+        // a title stays one line; nothing to add, or no note named: nothing happens
+        assertEquals(Incoming.New("a b", ""), incoming(view, null, "minotes://new?title=a%0Ab"))
+        assertNull(incoming(view, null, "minotes://append?title=Shop"))
+        assertNull(incoming(view, null, "minotes://append?text=bread"))
+        // only our own links, and only what they're for (there's no delete)
+        assertNull(incoming(view, null, "https://example.com/new?text=x"))
+        assertNull(incoming(view, null, "minotes://delete?title=Shop"))
+        assertNull(incoming(view, null, "minotes://new?text=%zz"))
+        assertNull(incoming("android.intent.action.MAIN", null, null))
+    }
+
+    @Test fun appendsToTheNoteWithThatTitle() {
+        val shop = note("a", " Shop ", "milk")
+        val gone = note("b", "Shop", "old", deletedAt = 5)
+        assertEquals("a", noteTitled(listOf(gone, shop), "shop")?.id)
+        assertNull(noteTitled(listOf(gone), "Shop")) // never into Recently Deleted
+        val body = RichText("milk", listOf(Span(0, 4, SpanType.PARA, "check")))
+        assertEquals(RichText("milk\nbread", body.spans), appended(body, "bread"))
+        assertEquals(RichText("bread"), appended(RichText(""), "bread"))
     }
 
     @Test fun previewWritesListMarkers() {
@@ -50,7 +84,7 @@ class NotesRulesTest {
         val p = paragraphs(text)
         fun para(i: Int, kind: String, level: Int = 0, checked: Boolean = false) = Span(p[i].first, p[i].second, SpanType.PARA, kind, level, checked)
         val n = note("a", "", text, spans = listOf(para(1, "check", checked = true), para(2, "check"), para(3, "number"), para(4, "number"), para(5, "number", 1), para(6, "number")))
-        assertEquals(listOf("☑ milk", "☐ eggs", "1. one", "2. two", "  1. nested", "3. three", "plain"), previewLines(n, 10))
+        assertEquals(listOf("Shopping", "☑ milk", "☐ eggs", "1. one", "2. two", "  1. nested", "3. three", "plain"), previewLines(n, 10))
         assertEquals(1 to 2, checklistProgress(n.body))
         assertNull(checklistProgress(RichText("x")))
     }

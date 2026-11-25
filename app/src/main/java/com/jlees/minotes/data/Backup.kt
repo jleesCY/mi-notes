@@ -11,7 +11,6 @@ import com.jlees.minotes.notes.NoteImages
 import com.jlees.minotes.notes.displayTitle
 import com.jlees.minotes.notes.noteToMarkdown
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonObject

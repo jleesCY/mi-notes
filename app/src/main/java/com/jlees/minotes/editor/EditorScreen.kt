@@ -7,23 +7,15 @@ import android.util.TypedValue
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.res.ResourcesCompat
 import com.jlees.minotes.NotesViewModel
@@ -33,13 +25,10 @@ import com.jlees.minotes.home.shortDate
 import com.jlees.minotes.notes.wordCount
 import com.jlees.minotes.ui.notePage
 import com.jlees.minotes.ui.common.*
-import com.jlees.minotes.notes.NoteImages
-import com.jlees.minotes.data.pans
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
-import kotlinx.coroutines.launch
 
 @Composable
 fun EditorScreen(
@@ -52,26 +41,28 @@ fun EditorScreen(
     val haptics = LocalHaptics.current
     val note = vm.notes[id] ?: return
     val s = vm.settings
-    var title by remember(id) { mutableStateOf(note.title) }
-    // renamed from outside the title box (⋮ › Rename while the note is open): the box shows the new name, and the next
-    // edit saves it rather than writing the old one back. (Typing in the box updates the note too, so this is a no-op then.)
-    if (note.title != title) title = note.title
     var tick by remember { mutableIntStateOf(0) } // the editor's state changed: the format controls re-read it
     var panel by remember { mutableStateOf(false) }
     var pillPx by remember { mutableIntStateOf(0) }
     var sheetPx by remember { mutableIntStateOf(0) } // the format panel's height while it's open (0 closed)
+    var insertPx by remember { mutableIntStateOf(0) } // the + panel's (its own: one closing as the other opens mustn't zero it)
     val editor = remember(id) {
         NoteEditText(ctx).apply {
             EditorFonts.sans = ResourcesCompat.getFont(ctx, R.font.google_sans_flex) ?: android.graphics.Typeface.DEFAULT
-            load(note.body)
+            load(note.body, note.title) // one text: the title is its first line
         }
     }
+    // renamed from outside the editor (⋮ › Rename while the note is open): its first line becomes the new name. Typing
+    // in it saves the same title it holds, so this does nothing then
+    LaunchedEffect(note.title) { if (note.title != editor.committedTitle) editor.setTitle(note.title) }
     // the theme and settings, into the Android view
     val ink = ui.cs.onSurface.toArgb()
-    LaunchedEffect(ink, ui.cs.primary, s.editorTextScale, s.font, s.checkedToBottom) {
+    LaunchedEffect(ink, ui.cs.primary, s.editorTextScale, s.font, s.checkedToBottom, s.fontScale) {
         val d = density.density
         ParaSpan.Look.apply { indent = (24 * d).toInt(); marker = (30 * d).toInt(); this.ink = ui.cs.onSurfaceVariant.toArgb(); accent = ui.cs.primary.toArgb(); onAccent = ui.cs.onPrimary.toArgb(); this.density = d }
         editor.apply {
+            // the title line: 26sp (times the app's Font Size), as the title was, with room below it
+            titlePx = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 26f * s.fontScale, ctx.resources.displayMetrics); titleGap = (8 * d).toInt()
             typeface = if (s.font == AppFont.SYSTEM) android.graphics.Typeface.DEFAULT else EditorFonts.sans
             if (s.font == AppFont.ROUNDED) fontVariationSettings = "'ROND' 100"
             setTextColor(ink); setHintTextColor(ui.cs.onSurfaceVariant.copy(alpha = 0.7f).toArgb())
@@ -88,7 +79,7 @@ fun EditorScreen(
             setLineSpacing(5 * d, 1f)
             fadedInk = ui.cs.onSurfaceVariant.copy(alpha = 0.6f).toArgb()
             checkedToBottom = s.checkedToBottom
-            invalidate()
+            restyleTitle(); invalidate()
         }
     }
     DisposableEffect(editor) {
@@ -99,7 +90,7 @@ fun EditorScreen(
             override fun afterTextChanged(e: android.text.Editable?) { tick++ }
         }
         editor.addTextChangedListener(watcher)
-        editor.onChange = { body -> vm.notes.edit(id, title, body) }
+        editor.onChange = { body -> vm.notes.edit(id, editor.title(), body) }
         vm.flushEditor = editor::flush
         editor.onState = { tick++ }
         editor.onTouchText = {} // the format panel stays open while you tap and select text; it closes when you close it
@@ -112,6 +103,8 @@ fun EditorScreen(
             kotlinx.coroutines.delay(300) // once the editor has grown into place
             // asked outright (an "implicit" request is one Android may ignore: now and then a new note had no keyboard),
             // and once more if it isn't up shortly after (the first ask can come before the window is ready for it)
+            // a plain new note starts on its title line; a new checklist on its first item
+            editor.requestFocus(); editor.setSelection(if (note.body.spans.isEmpty()) 0 else editor.titleEnd() + 1)
             repeat(2) {
                 editor.requestFocus()
                 @Suppress("DEPRECATION")
@@ -148,16 +141,6 @@ fun EditorScreen(
                         Sym("more_vert", 24f, ui.cs.onSurface, label = "Note options")
                     }
                 }
-                BasicTextField(
-                    title, { title = it; vm.notes.edit(id, it, RichCodec.toRich(editor.text)) },
-                    // on the body's left line: its 20dp padding, less 1 for the big bold letters' wider side bearing
-                    Modifier.fillMaxWidth().padding(start = 19.dp, end = 20.dp, top = 8.dp),
-                    textStyle = TextStyle(color = ui.cs.onSurface, fontFamily = ui.font, fontWeight = ui.extrabold, fontSize = (26 * s.fontScale).sp),
-                    cursorBrush = SolidColor(ui.cs.primary), maxLines = 3,
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
-                    keyboardActions = KeyboardActions(onNext = { editor.requestFocus(); editor.setSelection(0) }),
-                    decorationBox = { inner -> Box { if (title.isEmpty()) Txt("Title", 26f, ui.cs.onSurfaceVariant.copy(alpha = 0.6f), ui.extrabold); inner() } },
-                )
                 Box(Modifier.fillMaxWidth().weight(1f)) {
                 // the text scrolls in a ScrollView that doesn't clip to its padding, so lines pass behind the Pill (only
                 // the Pill covers content) instead of being cut off above it, and nothing the editor draws (a picture's
@@ -185,26 +168,25 @@ fun EditorScreen(
                     update = { v ->
                         // room at the bottom for the Pill, so the last lines can scroll up above it
                         val pad = (20 * density.density).toInt()
-                        editor.setPadding(pad, (6 * density.density).toInt(), pad, pad)
+                        editor.setPadding(pad, (8 * density.density).toInt(), pad, pad)
                         // the Pill's room, or the format panel's while it's open. The page already ends at the keyboard
                         // and a panel rises from the screen's bottom over it, so only the part above the keyboard counts:
                         // counted whole while the keyboard goes down, the note scrolled for room it already had
-                        val gap = maxOf(pillPx, sheetPx - (imeDp() * density.density).toInt()) + pad
+                        val gap = maxOf(pillPx, maxOf(sheetPx, insertPx) - (imeDp() * density.density).toInt()) + pad
                         v.setPadding(0, 0, 0, gap)
+                        // a panel opening over the text: what you selected (or the cursor) glides up into view above it
+                        val grew = gap > editor.bottomGap
                         editor.bottomGap = gap
+                        if (grew && editor.hasFocus()) editor.keepCursorInView()
                     },
                     modifier = Modifier.fillMaxSize().clipToBounds(),
                 )
-                // the editor always holds a line break of its own (RichCodec), so its hint never shows: this stands in,
-                // read from the editor itself on every change
-                val empty = run { tick; showsPlaceholder(editor.text) }
-                if (empty) Txt("Start writing", 17f * s.editorTextScale, ui.cs.onSurfaceVariant.copy(alpha = 0.7f), ui.regular,
-                    Modifier.padding(start = 20.dp, top = 6.dp), scaled = false)
+                // its "Title" and "Start writing" hints: drawn by the editor (NoteEditText.onDraw)
                 }
             }
         }
         FormatSheet(editor, tick, panel, onClose = { panel = false }, onSize = { sheetPx = it })
-        FormatPill(editor, tick, panel, { panel = it }, navDp, imeDp, onSize = { pillPx = it }, onShrink = onShrink, onShrinkRelease = onShrinkRelease,
+        FormatPill(editor, tick, panel, { panel = it }, navDp, imeDp, onSize = { pillPx = it }, onInsertSize = { insertPx = it }, onShrink = onShrink, onShrinkRelease = onShrinkRelease,
             hidden = { vm.noteOpen() < 0.999f },
             // measured against the note's own page, so the note growing or shrinking around it doesn't skew it (the
             // page fills the window when open)

@@ -45,16 +45,18 @@ fun daysLeft(note: Note, now: Long, days: Int = TRASH_DAYS): Int {
     return ((gone - now + DAY_MS - 1) / DAY_MS).toInt().coerceAtLeast(1)
 }
 
-/** A note's title, or its first line of text when it has none, or "Untitled". */
-fun displayTitle(n: Note): String =
-    n.title.trim().ifEmpty { n.body.plain.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }?.take(80) ?: "Untitled" }
+/** A note's title, or "Untitled": a note without a title never borrows its first line (the title is only what you wrote there). */
+fun displayTitle(n: Note): String = n.title.trim().ifEmpty { "Untitled" }
+
+/** A card's title: none for a note without one that has text (its text shows from the top), "Untitled" for a blank note. */
+fun cardTitle(n: Note): String? = n.title.trim().ifEmpty { if (n.body.plain.isBlank()) "Untitled" else null }
 
 /**
- * A card's preview: up to [maxLines] lines of the note's text (the first line is skipped when it's standing in as the
- * title), with list markers drawn as text: "•", "1.", "☐" / "☑", indented two spaces a level.
+ * A card's preview: up to [maxLines] lines of the note's text, with list markers drawn as text: "•", "1.", "☐" / "☑",
+ * indented two spaces a level.
  */
 fun previewLines(n: Note, maxLines: Int): List<String> =
-    markedLines(n.body).filter { it.isNotBlank() }.drop(if (n.title.isBlank()) 1 else 0).take(maxLines)
+    markedLines(n.body).filter { it.isNotBlank() }.take(maxLines)
 
 /** Every paragraph of [rt] as a line of text, list markers written out, pictures left out. */
 fun markedLines(rt: RichText): List<String> {
@@ -100,3 +102,53 @@ fun plainText(n: Note): String {
     val body = markedLines(n.body).joinToString("\n").trim('\n')
     return if (n.title.isBlank()) body else "${n.title.trim()}\n\n$body"
 }
+
+// ---- what other apps ask of mi. Notes: shared text, the app icon's New Note shortcut, and minotes:// links for
+// automation apps (Tasker and the like). Links only ever add: they can't delete or change what's already written.
+
+/** One request from outside the app. */
+sealed interface Incoming {
+    /** Text shared from another app: a new note, its first line the title when it reads like one. */
+    data class Shared(val text: String) : Incoming
+    /** The app icon's New Note shortcut. */
+    data object Blank : Incoming
+    /** `minotes://new?title=…&text=…`: a new note. */
+    data class New(val title: String, val text: String) : Incoming
+    /** `minotes://append?title=…&text=…`: [text] added to the end of the note titled [title] (a new note when there's none). */
+    data class Append(val title: String, val text: String) : Incoming
+}
+
+/** The app icon shortcut's action (MainActivity). */
+const val NEW_NOTE_ACTION = "com.jlees.minotes.NEW_NOTE"
+private const val MAX_LINK_TITLE = 200
+
+/** What an incoming intent asks for, from its [action], shared [text] and [link] (its data URI); null: nothing for us. */
+fun incoming(action: String?, text: String?, link: String?): Incoming? = when (action) {
+    "android.intent.action.SEND" -> text?.takeIf { it.isNotBlank() }?.take(ShareNote.MAX_SHARED_TEXT)?.let { Incoming.Shared(it) }
+    NEW_NOTE_ACTION -> Incoming.Blank
+    "android.intent.action.VIEW" -> link?.let(::linkRequest)
+    else -> null
+}
+
+private fun linkRequest(link: String): Incoming? {
+    val uri = runCatching { java.net.URI(link) }.getOrNull() ?: return null
+    if (uri.scheme != "minotes") return null
+    val q = uri.rawQuery.orEmpty().split('&').mapNotNull { p ->
+        val kv = p.split('=', limit = 2)
+        if (kv.size == 2) kv[0] to (runCatching { java.net.URLDecoder.decode(kv[1], "UTF-8") }.getOrNull() ?: return@mapNotNull null) else null
+    }.toMap()
+    // a title is one line, kept short; text as long as a share can be
+    val title = q["title"].orEmpty().replace('\n', ' ').trim().take(MAX_LINK_TITLE)
+    val text = q["text"].orEmpty().take(ShareNote.MAX_SHARED_TEXT)
+    return when (uri.host) {
+        "new" -> Incoming.New(title, text)
+        "append" -> if (title.isEmpty() || text.isBlank()) null else Incoming.Append(title, text)
+        else -> null
+    }
+}
+
+/** The live note titled [title] (ignoring case and spaces around it), for a link to add to. */
+fun noteTitled(notes: List<Note>, title: String): Note? = notes.firstOrNull { it.deletedAt == null && it.title.trim().equals(title.trim(), ignoreCase = true) }
+
+/** [body] with [text] added on lines of its own at the end; its formatting stays as it was. */
+fun appended(body: RichText, text: String): RichText = if (body.text.isEmpty()) RichText(text) else body.copy(text = body.text + "\n" + text)

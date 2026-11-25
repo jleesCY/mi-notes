@@ -146,8 +146,9 @@ fun HomeScreen(vm: NotesViewModel, statusDp: Float, navDp: Float, imeDp: () -> F
                         // cards as tall as their note: a staggered grid
                         val grid = rememberLazyStaggeredGridState()
                         AutoScroll(drag, { grid.scrollBy(it) }, ::checkSwap)
+                        FollowTop(shown.firstOrNull()?.id, { grid.firstVisibleItemIndex }) { grid.requestScrollToItem(0) }
                         LazyVerticalStaggeredGrid(
-                            StaggeredGridCells.Adaptive(160.dp), Modifier.fillMaxSize(), grid, contentPadding = padding,
+                            StaggeredGridCells.Fixed(2), Modifier.fillMaxSize(), grid, contentPadding = padding,
                             verticalItemSpacing = 18.dp, horizontalArrangement = Arrangement.spacedBy(14.dp),
                         ) {
                             if (both) item(key = "h:pinned", span = StaggeredGridItemSpan.FullLine) { GroupLabel("Pinned") }
@@ -159,8 +160,9 @@ fun HomeScreen(vm: NotesViewModel, statusDp: Float, navDp: Float, imeDp: () -> F
                         // every card the same size: a clean grid
                         val grid = rememberLazyGridState()
                         AutoScroll(drag, { grid.scrollBy(it) }, ::checkSwap)
+                        FollowTop(shown.firstOrNull()?.id, { grid.firstVisibleItemIndex }) { grid.requestScrollToItem(0) }
                         LazyVerticalGrid(
-                            GridCells.Adaptive(160.dp), Modifier.fillMaxSize(), grid, contentPadding = padding,
+                            GridCells.Fixed(2), Modifier.fillMaxSize(), grid, contentPadding = padding,
                             verticalArrangement = Arrangement.spacedBy(18.dp), horizontalArrangement = Arrangement.spacedBy(14.dp),
                         ) {
                             if (both) item(key = "h:pinned", span = { GridItemSpan(maxLineSpan) }) { GroupLabel("Pinned") }
@@ -172,6 +174,7 @@ fun HomeScreen(vm: NotesViewModel, statusDp: Float, navDp: Float, imeDp: () -> F
                 } else {
                     val list = rememberLazyListState()
                     AutoScroll(drag, { list.scrollBy(it) }, ::checkSwap)
+                    FollowTop(shown.firstOrNull()?.id, { list.firstVisibleItemIndex }) { list.requestScrollToItem(0) }
                     val rowH = rowHeight(s.uiPadding, s.fontScale) + 8f
                     LazyColumn(
                         Modifier.fillMaxSize(), list,
@@ -193,6 +196,15 @@ fun HomeScreen(vm: NotesViewModel, statusDp: Float, navDp: Float, imeDp: () -> F
         HomePill(vm, navDp, imeDp, dragSheet, releaseSheet)
     }
 }
+
+/**
+ * A note added at the top (a new one) while the list is at its top shows there at once. A lazy list keeps its old
+ * first item where it was, so the new card landed above, out of sight, and the cards only moved once it was
+ * scrolled to (well after the note had closed). [firstIndex] is 1 just after such an insert.
+ */
+@Composable
+private fun FollowTop(firstId: String?, firstIndex: () -> Int, toTop: () -> Unit) =
+    LaunchedEffect(firstId) { if (firstIndex() <= 1) toTop() }
 
 /**
  * A tap anywhere above the Pill (not a scroll) lets go of the search field, and the keyboard goes with it. It only

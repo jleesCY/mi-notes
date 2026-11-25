@@ -19,7 +19,8 @@ class MainActivity : ComponentActivity() {
         installSplashScreen().setKeepOnScreenCondition { !vm.ready }
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        vm.start(if (savedInstanceState == null) sharedText(intent) else null)
+        vm.start(if (savedInstanceState == null) request(intent) else null)
+        addNewNoteShortcut()
         // one Haptics for the whole UI, following the Gesture Haptics setting
         val haptics = Haptics(window.decorView) { vm.settings.hapticFeedback }
         setContent { if (vm.ready) CompositionLocalProvider(LocalHaptics provides haptics) { App(vm, this) } }
@@ -27,11 +28,22 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        sharedText(intent)?.let { vm.receiveShared(it) }
+        request(intent)?.let(vm::receive)
     }
 
-    /** Text shared to mi. Notes from another app: it becomes a new note. */
-    private fun sharedText(i: Intent?) = i?.takeIf { it.action == Intent.ACTION_SEND }?.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() }
+    /** What [i] asks of mi. Notes: shared text, the New Note shortcut, or a minotes:// link (NotesRules.incoming). */
+    private fun request(i: Intent?) = i?.let { com.jlees.minotes.notes.incoming(it.action, it.getStringExtra(Intent.EXTRA_TEXT), it.dataString) }
+
+    /** "New Note" on the app icon (long-press it, or drag it to the home screen as an icon of its own). */
+    private fun addNewNoteShortcut() {
+        val sm = getSystemService(android.content.pm.ShortcutManager::class.java) ?: return
+        if (sm.dynamicShortcuts.any { it.id == "new_note" }) return
+        sm.dynamicShortcuts = listOf(
+            android.content.pm.ShortcutInfo.Builder(this, "new_note").setShortLabel("New Note")
+                .setIcon(android.graphics.drawable.Icon.createWithResource(this, R.drawable.shortcut_new_note))
+                .setIntent(Intent(com.jlees.minotes.notes.NEW_NOTE_ACTION, null, this, MainActivity::class.java)).build(),
+        )
+    }
 
     override fun onStop() { vm.saveNow(); super.onStop() }
 }

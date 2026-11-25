@@ -3,12 +3,7 @@
 // button, then their controls, with the keyboard kept away while they're open.
 package com.jlees.minotes.editor
 
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.CustomAccessibilityAction
 import com.jlees.minotes.scan.rememberScanner
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.boundsInWindow
 
 import android.text.Layout
 import android.view.inputmethod.InputMethodManager
@@ -30,7 +25,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Slider
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -43,11 +37,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.jlees.minotes.notes.ListKind
-import com.jlees.minotes.notes.NoteImages
 import com.jlees.minotes.ui.common.*
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /** Text colours: chosen to read on both light and dark pages. 0 is the page's own text colour. */
 val TEXT_COLORS = listOf(0, 0xFFE5484D, 0xFFF76B15, 0xFFE2A300, 0xFF30A46C, 0xFF12A594, 0xFF0090FF, 0xFF8E4EC6, 0xFFD6409F, 0xFF8B8D98).map { it.toInt() }
@@ -60,7 +51,7 @@ val HIGHLIGHTS = listOf(0, 0xFFFFD43B, 0xFF69DB7C, 0xFF4DABF7, 0xFFF783AC, 0xFFF
  * of a photo or a picture into the note (scan/).
  */
 @Composable
-internal fun BoxScope.InsertPanel(editor: NoteEditText, open: Boolean, close: () -> Unit, keyboardBack: () -> Boolean) {
+internal fun BoxScope.InsertPanel(editor: NoteEditText, open: Boolean, close: () -> Unit, keyboardBack: () -> Boolean, onSize: (Int) -> Unit) {
     val scanning = remember { booleanArrayOf(false) } // closed for the camera or Files: no keyboard in between
     // each leads straight on to writing: the keyboard comes back for the line after the divider, or in the block
     fun thenType(make: () -> Unit) {
@@ -70,7 +61,7 @@ internal fun BoxScope.InsertPanel(editor: NoteEditText, open: Boolean, close: ()
     }
     // scanned text goes in at the cursor (kept while the camera or Files is open), and writing carries on after it
     val scan = rememberScanner { text -> thenType { editor.insertLines(text) } }
-    EditorPanel(editor, open, close, ownsKeyboard = false, keyboardBack = { val leftToScan = scanning[0]; scanning[0] = false; !leftToScan && keyboardBack() }) {
+    EditorPanel(editor, open, close, onSize, ownsKeyboard = false, keyboardBack = { val leftToScan = scanning[0]; scanning[0] = false; !leftToScan && keyboardBack() }) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PanelTile("horizontal_rule", "Divider") { thenType { editor.insertDivider() } }
@@ -154,8 +145,10 @@ internal fun BoxScope.EditorPanel(
     var wasOpen by remember { mutableStateOf(false) }
     LaunchedEffect(open) {
         val imm = ctx.getSystemService(InputMethodManager::class.java)
-        if (ownsKeyboard) editor.showSoftInputOnFocus = !open // tapping the text while it's open moves the cursor, no keyboard
-        if (open) { wasOpen = true; drag.snapTo(0f); imm.hideSoftInputFromWindow(editor.windowToken, 0) }
+        if (ownsKeyboard) editor.tapOpensKeyboard = !open // tapping the text while it's open moves the cursor, no keyboard
+        // its height again on every opening: onSizeChanged only reports a change, and closing reported 0 (so the text
+        // had no room to scroll clear of a panel opened a second time)
+        if (open) { wasOpen = true; drag.snapTo(0f); imm.hideSoftInputFromWindow(editor.windowToken, 0); if (heightPx > 0f) onSize(heightPx.toInt()) }
         else if (wasOpen && keyboardBack()) { editor.holdSelection = false; editor.requestFocus(); imm.showSoftInput(editor, 0) }
         slide.animateTo(if (open) 0f else 1f, if (open) Motion.enter(300) else Motion.exit(180))
         if (!open) onSize(0)

@@ -9,7 +9,7 @@ shared `mi-design` library. Fix them in both places.
 
 | Package | Owns |
 |---|---|
-| `notes/` | the saved format (`Note.kt`: Note, Folder, RichText, Span), NotesStore, NotesRules (filtering, sorting, previews, trash), Markdown export/import, NoteImages, ShareNote |
+| `notes/` | the saved format (`Note.kt`: Note, Folder, RichText, Span), NotesStore, NotesRules (filtering, sorting, previews, trash, and what other apps ask: shared text, the New Note shortcut, `minotes://new` and `minotes://append` links, which only ever add), Markdown export/import, NoteImages, ShareNote |
 | `editor/` | the rich text editor: Spans (one span class per saved format kind), RichCodec (editor text ⇄ RichText), Formatting (pure-ish Editable operations), NoteEditText (lists, checkboxes, backspace, pending styles, undo/redo), EditorScreen, FormatPill (the Pill and the Aa panel) |
 | `home/` | HomeScreen (header, folder chips, grid/list, drag to rearrange), NoteCard (cards, rows, the tap/hold/drag gesture), HomePill |
 | `trash/` | Recently Deleted |

@@ -19,6 +19,9 @@ import com.jlees.minotes.data.Settings
 import com.jlees.minotes.data.importedOver
 import com.jlees.minotes.data.migrated
 import com.jlees.minotes.notes.Folder
+import com.jlees.minotes.notes.Incoming
+import com.jlees.minotes.notes.appended
+import com.jlees.minotes.notes.noteTitled
 import com.jlees.minotes.notes.ListKind
 import com.jlees.minotes.notes.Note
 import com.jlees.minotes.notes.NoteImages
@@ -90,8 +93,8 @@ class NotesViewModel(app: Application, private val saved: androidx.lifecycle.Sav
     private var started = false
 
     /** Loads everything (once per process: the ViewModel outlives a rotation). */
-    fun start(shared: String?) {
-        if (started) { shared?.let { receiveShared(it) }; return }
+    fun start(request: Incoming?) {
+        if (started) { request?.let(::receive); return }
         started = true
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
@@ -105,7 +108,7 @@ class NotesViewModel(app: Application, private val saved: androidx.lifecycle.Sav
             if (store.keptAside) Notices.show("Couldn't read some saved data. It was kept aside", long = true)
             whatsNew.checkAtLaunch()
             updater.checkQuietly()
-            shared?.let { receiveShared(it) }
+            request?.let(::receive)
             withContext(Dispatchers.IO) {
                 NoteImages.clean(getApplication(), notes.notes)
                 // an update downloaded last time has been installed (or given up on) by now: its APK needn't stay
@@ -162,7 +165,23 @@ class NotesViewModel(app: Application, private val saved: androidx.lifecycle.Sav
         open(notes.create(folder, body, if (titled) rt.text.substring(0, nl) else "").id, null)
     }
 
-    fun receiveShared(text: String) = newNoteFrom(RichText(text.trim()))
+    /** A request from outside (NotesRules.incoming): shared text, the New Note shortcut, a minotes:// link. */
+    fun receive(r: Incoming) {
+        sheet = Sheet.NONE; menuFor = null // the note comes up in front of whatever was showing
+        fun create(title: String, text: String) = open(notes.create(folder, RichText(text), title).id, null)
+        when (r) {
+            is Incoming.Shared -> newNoteFrom(RichText(r.text.trim()))
+            Incoming.Blank -> newNote()
+            is Incoming.New -> create(r.title, r.text)
+            is Incoming.Append -> {
+                val n = noteTitled(notes.notes, r.title) ?: return create(r.title, r.text)
+                flushEditor() // what's being typed is saved first, so the addition goes after it
+                notes.edit(n.id, n.title, appended(notes[n.id]!!.body, r.text))
+                // open in the editor already: it closes (the editor holds the text it opened with), the note keeps the addition
+                if (openId == n.id) closeNote() else open(n.id, null)
+            }
+        }
+    }
 
     fun deleteNote(id: String) {
         val n = notes[id] ?: return

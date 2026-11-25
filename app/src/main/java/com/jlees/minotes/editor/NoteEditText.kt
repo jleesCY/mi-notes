@@ -39,6 +39,16 @@ class NoteEditText(ctx: Context) : EditText(ctx) {
     var onTouchText: () -> Unit = {}
     /** Ticked items move below the rest of their checklist (Settings › Notes › Checked Items to Bottom). */
     var checkedToBottom = false
+    /** A tap on the text brings the keyboard up (off while the format panel is open: a tap there only moves the cursor). */
+    var tapOpensKeyboard = true
+    /**
+     * Only a tap brings the keyboard up: never selecting (a long press, a double tap) and never focus alone. It waits out
+     * the double-tap time, so the first tap of a double tap (which selects a word) doesn't open it either.
+     */
+    private val keyboardForTap = Runnable {
+        if (tapOpensKeyboard && hasFocus() && selectionStart == selectionEnd)
+            context.getSystemService(android.view.inputmethod.InputMethodManager::class.java).showSoftInput(this, 0)
+    }
     /** The colour of ticked items' text. */
     var fadedInk = 0x80FFFFFF.toInt()
     /** Bumped on every change, so Compose can re-read the format state. */
@@ -81,7 +91,7 @@ class NoteEditText(ctx: Context) : EditText(ctx) {
     private var at = -1
     private val main = Handler(Looper.getMainLooper())
     private var commitPending = false
-    private val commit = Runnable { commitPending = false; snapshot(); onChange(RichCodec.toRich(text)) }
+    private val commit = Runnable { commitPending = false; snapshot(); committedTitle = title(); onChange(body()) }
     /** Fields are set up after EditText's constructor, which already calls onSelectionChanged: until then, nothing runs. */
     private var ready = false
 
@@ -93,6 +103,7 @@ class NoteEditText(ctx: Context) : EditText(ctx) {
     fun hideSelectionMenu() { selectionMenu?.finish() }
 
     init {
+        showSoftInputOnFocus = false // the keyboard comes from a tap only (keyboardForTap)
         customSelectionActionModeCallback = object : android.view.ActionMode.Callback {
             override fun onCreateActionMode(mode: android.view.ActionMode, menu: android.view.Menu): Boolean { selectionMenu = mode; return true }
             override fun onPrepareActionMode(mode: android.view.ActionMode, menu: android.view.Menu) = false
@@ -137,6 +148,7 @@ class NoteEditText(ctx: Context) : EditText(ctx) {
                     }
                     keepTrailingLine() // again, after the edits above; the last paragraph's format covers that line break
                     normalizeParagraphs(e)
+                    fixTitle(e)
                     refreshDone(e, fadedInk)
                 } finally { busy = false; newlineAt = -1; clearedAt = -1; insertAt = -1; typingNow = false }
                 changed(typing = true)
@@ -146,10 +158,55 @@ class NoteEditText(ctx: Context) : EditText(ctx) {
         ready = true
     }
 
-    /** Shows [rt] (a note opened): history starts fresh from it. */
-    fun load(rt: RichText) {
+    // ---- the title: with one, the note is one text and the title is simply its first line (blank when that line is),
+    // so a selection runs across it and pasting into it keeps only the first line there
+
+    /** The first line is the note's title ([load] given one). */
+    var titled = false; private set
+    /** The title line's text size and the room below it (px), set from the theme; [restyleTitle] applies them. */
+    var titlePx = 0f; var titleGap = 0
+    /** The title as last handed to [onChange]: a title changed from outside (⋮ › Rename) differs from it. */
+    var committedTitle = ""; private set
+
+    /** Where the title line ends (its line break); -1 without a title. */
+    fun titleEnd(): Int = if (!titled) -1 else text.indexOf('\n').let { if (it < 0) length() else it }
+    fun title(): String = if (titled) text.substring(0, titleEnd()) else ""
+    /** The note's body: everything after the title line. */
+    fun body(): RichText = if (!titled) RichCodec.toRich(text) else RichCodec.toRich(text.subSequence((titleEnd() + 1).coerceAtMost(length()), length()) as Spanned)
+
+    /** Puts [t] in place of the title (renamed from outside), as one undo step. */
+    fun setTitle(t: String) { if (titled && t != title()) edit { it.replace(0, titleEnd(), t.replace('\n', ' ')) } }
+
+    fun restyleTitle() { busy = true; try { fixTitle(text) } finally { busy = false }; breakStrategy = breakStrategy }
+
+    /**
+     * The title line drawn as the title, and kept plain: it's saved as text, so a list, block or style that reaches into
+     * it (a backspace joining a list item onto it, Bold over a selection that starts in it) stops at the body.
+     */
+    private fun fixTitle(e: Editable) {
+        if (!titled) return
+        val te = e.indexOf('\n').let { if (it < 0) e.length else it }
+        e.getSpans(0, e.length, TitleSpan::class.java).forEach { e.removeSpan(it) }
+        for (sp in e.getSpans(0, te + 1, Any::class.java)) {
+            if (!(sp is ParaSpan || sp is AlignSpan || sp is BlockSpan || sp is WeightSpan || sp is ItalicSpan || sp is UnderlinedSpan ||
+                    sp is StrikeSpan || sp is ColorSpan || sp is HighlightSpan || sp is SizeSpan || sp is FontSpan || sp is DoneSpan)) continue
+            val a = e.getSpanStart(sp); val b = e.getSpanEnd(sp); val f = e.getSpanFlags(sp)
+            if (a > te) continue
+            e.removeSpan(sp)
+            if (b > te + 1) e.setSpan(sp, te + 1, b, f)
+        }
+        e.setSpan(TitleSpan(titlePx, titleGap), 0, minOf(te + 1, e.length), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+
+    /** Shows [rt] (a note opened), with [title] as its first line when given: history starts fresh from it. */
+    fun load(rt: RichText, title: String? = null) {
+        titled = title != null
+        val t = title.orEmpty().replace('\n', ' ')
+        val all = if (title == null) rt else RichText(t + "\n" + rt.text, rt.spans.map { it.copy(start = it.start + t.length + 1, end = it.end + t.length + 1) })
+        committedTitle = t
         busy = true
-        RichCodec.load(text, rt, ::loadImage, ::pageWidth)
+        RichCodec.load(text, all, ::loadImage, ::pageWidth)
+        fixTitle(text)
         refreshDone(text, fadedInk)
         busy = false
         setSelection(0)
@@ -245,7 +302,11 @@ class NoteEditText(ctx: Context) : EditText(ctx) {
     /** Runs a formatting change as one step: one undo, saved at once. */
     private fun edit(f: (Editable) -> Unit) {
         busy = true
-        try { f(text); keepTrailingLine(); normalizeParagraphs(text); refreshDone(text, fadedInk) } finally { busy = false }
+        try { f(text); keepTrailingLine(); normalizeParagraphs(text); fixTitle(text); refreshDone(text, fadedInk) } finally { busy = false }
+        // lay the text out again: Android moves the lines below a change only for typing, so text made bigger by a span
+        // (a size, a style) overlapped the lines under it until the next keystroke. setBreakStrategy rebuilds the layout
+        // even when the value is unchanged
+        breakStrategy = breakStrategy
         // the selection stays chosen for the next control (while busy, moves from the edit itself were kept in selS/selE)
         val (s, e) = sel(); selS = s; selE = e
         if (!isFocused || selectionStart != s || selectionEnd != e) setSelection(s, e)
@@ -284,6 +345,7 @@ class NoteEditText(ctx: Context) : EditText(ctx) {
         val was = text.toString()
         busy = true
         RichCodec.load(text, s.text, ::loadImage, ::pageWidth)
+        fixTitle(text)
         refreshDone(text, fadedInk)
         busy = false
         val now = text.toString()
@@ -291,7 +353,7 @@ class NoteEditText(ctx: Context) : EditText(ctx) {
         else { selS = changedUpTo(was, now).coerceAtMost(length() - 1); selE = selS } // where the undone change was
         setSelection(selS, selE)
         version++
-        onChange(s.text); onState()
+        committedTitle = title(); onChange(body()); onState()
     }
 
     // ---- typing details
@@ -313,6 +375,9 @@ class NoteEditText(ctx: Context) : EditText(ctx) {
         if (isFocused || busy || typingNow) { selS = minOf(selStart, selEnd).coerceAtLeast(0); selE = maxOf(selStart, selEnd).coerceAtLeast(0) }
         else return // focus going elsewhere collapsed it: keep the one the controls act on
         if (!busy && !typingNow) pending.clear() // a style picked for the cursor applies only where it was picked
+        // a new selection made while the format panel is open (after a tap let go of the last one) is held too, so every
+        // change from the panel keeps it selected rather than the first one collapsing it
+        if (!tapOpensKeyboard && !busy && !typingNow && !holdSelection && selS != selE) holdSelection = true
         version++; onState()
         main.post { matchKeysToLine() } // after the edit or tap that moved it has finished
     }
@@ -383,9 +448,10 @@ class NoteEditText(ctx: Context) : EditText(ctx) {
                 val top = extendedPaddingTop + l.getLineTop(line)
                 val bottom = extendedPaddingTop + l.getLineBottom(line)
                 val shown = sv.height - bottomGap // the part of the page not under the Pill
+                // a glide, not a jump: the note moving to show the cursor is something you should see happen
                 when {
-                    bottom > sv.scrollY + shown -> { sv.scrollTo(0, bottom - shown); return false } // drawn again, scrolled
-                    top < sv.scrollY -> { sv.scrollTo(0, top); return false }
+                    bottom > sv.scrollY + shown -> sv.smoothScrollTo(0, bottom - shown)
+                    top < sv.scrollY -> sv.smoothScrollTo(0, top)
                 }
                 return true
             }
@@ -396,13 +462,28 @@ class NoteEditText(ctx: Context) : EditText(ctx) {
     }
 
     override fun requestRectangleOnScreen(rectangle: android.graphics.Rect, immediate: Boolean): Boolean =
-        super.requestRectangleOnScreen(android.graphics.Rect(rectangle).apply { bottom += bottomGap }, immediate) // above the Pill
+        super.requestRectangleOnScreen(android.graphics.Rect(rectangle).apply { bottom += bottomGap }, false) // above the Pill, gliding there
+
+    /** With a title: "Title" on an empty first line, "Start writing" on an empty body, in the hint colour. */
+    override fun onDraw(canvas: android.graphics.Canvas) {
+        super.onDraw(canvas)
+        val l = layout ?: return
+        if (!titled) return
+        fun hint(line: Int, s: String, title: Boolean) {
+            val p = android.text.TextPaint(paint).apply { color = currentHintTextColor; if (title) TitleSpan(titlePx, 0).updateDrawState(this) }
+            canvas.drawText(s, compoundPaddingLeft.toFloat(), (extendedPaddingTop + l.getLineBaseline(line)).toFloat(), p)
+        }
+        val te = titleEnd()
+        if (te == 0) hint(0, "Title", true)
+        if (te + 1 < length() && showsPlaceholder(text.subSequence(te + 1, length()) as Spanned)) hint(l.getLineForOffset(te + 1), "Start writing", false)
+    }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downX = event.x; downY = event.y; downAt = event.eventTime; scrolled = false
+                main.removeCallbacks(keyboardForTap) // a second tap: a double tap, which selects
                 downOnCheck = checkAt(event.x, event.y); if (downOnCheck >= 0) return true
                 holdSelection = false; touchedText = true; lostRange = null; onTouchText()
             }
@@ -420,6 +501,9 @@ class NoteEditText(ctx: Context) : EditText(ctx) {
                 }
                 // a scroll that ended here: let the text forget the touch, so no cursor is placed and no keyboard opens
                 if (scrolled) { val cancel = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }; super.onTouchEvent(cancel); cancel.recycle(); return true }
+                // a tap (let go before the long-press time, which selects): the keyboard, unless it turns out to select
+                if (event.eventTime - downAt < android.view.ViewConfiguration.getLongPressTimeout())
+                    main.postDelayed(keyboardForTap, android.view.ViewConfiguration.getDoubleTapTimeout().toLong())
             }
             MotionEvent.ACTION_CANCEL -> { downOnCheck = -1 }
         }

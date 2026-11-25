@@ -26,6 +26,7 @@
 
 ## Highlights
 - **One Pill for everything**: tap + for a new note, hold to search, swipe for Settings or Recently Deleted. In a note it becomes your toolbar: swipe right to undo, left to redo, up to go back.
+- **One note, one text**: the title is simply the first line, so you can select across it, and a note with a blank first line has no title.
 - **Rich text**: Title, Heading and Subheading styles; bold, italic, underline, strikethrough; any text size you type; text colours and highlights; alignment. All on one small panel where the keyboard was.
 - **Lists that behave**: bullets, numbers and checklists carry on with Enter and end with Enter twice, six levels deep. Ticked items can move to the bottom.
 - **Dividers, quotes, code blocks and callouts** from the toolbar's +. They export to Markdown as `---`, `> `, fenced code and GitHub's `> [!NOTE]`, and come back the same way.
@@ -33,6 +34,7 @@
 - **Folders, pins and colours**: pick a folder from its chip, hold a note to rearrange it, give notes a colour.
 - **Nothing is lost**: Undo after every delete, undo and redo while writing, and Recently Deleted (30 days by default).
 - **Your data, your files**: one-file backups (`.minotesdata`), Markdown export of every note, and Markdown or text import. Share a note as text or as a Markdown file, or send text from any app into a new note.
+- **Shortcuts and automation**: New Note on the app icon, and `minotes://new` and `minotes://append` links for apps like Tasker (they only ever add text).
 - **Material 3 Expressive**: colours from your wallpaper, pure black dark mode, staggered, grid or list layouts, haptics and smooth motion.
 - **No accounts, no tracking.** The only connection is a check with GitHub for a newer version.
 

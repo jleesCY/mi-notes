@@ -6,31 +6,14 @@ package com.jlees.minotes.editor
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.CustomAccessibilityAction
-import com.jlees.minotes.scan.rememberScanner
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.boundsInWindow
 
-import android.text.Layout
 import android.view.inputmethod.InputMethodManager
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
-import androidx.compose.ui.zIndex
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Slider
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -43,17 +26,16 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.jlees.minotes.notes.ListKind
-import com.jlees.minotes.notes.NoteImages
 import com.jlees.minotes.ui.common.*
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 
 @Composable
 fun BoxScope.FormatPill(
     editor: NoteEditText, tick: Int, panel: Boolean, setPanel: (Boolean) -> Unit, navDp: Float, imeDp: () -> Float,
     onSize: (Int) -> Unit,
+    /** The + panel's height while it's open (0 closed), for the text to scroll clear of it. */
+    onInsertSize: (Int) -> Unit = {},
     /** A swipe up: how far the finger has gone up (dp, negative), for the note to shrink with it exactly. */
     onShrink: (dy: Float) -> Unit = {}, onShrinkRelease: (close: Boolean) -> Unit = {},
     /** The note isn't fully open: the Pill hides (a copy above the note turns into the home bar's Pill). */
@@ -70,13 +52,20 @@ fun BoxScope.FormatPill(
     var insert by remember { mutableStateOf(false) } // the + panel is open
     // closing it brings the keyboard back, unless it closed for the format panel (which keeps the keyboard away)
     val panelNow by rememberUpdatedState(panel)
-    InsertPanel(editor, insert, close = { insert = false }, keyboardBack = { !panelNow })
+    InsertPanel(editor, insert, close = { insert = false }, keyboardBack = { !panelNow }, onSize = onInsertSize)
     fun hideKeyboard() = ctx.getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(editor.windowToken, 0)
     // the panel takes the keyboard's place: a keyboard that shows up late (after a long press, say) goes away again.
     // Tapping the text closes the panel first (NoteEditText.onTouchText), so that keyboard stays.
     @OptIn(ExperimentalLayoutApi::class) val keyboardUp = WindowInsets.isImeVisible
     // the panel keeps the keyboard away from the note; a keyboard for something else (its size box) is left be
     LaunchedEffect(keyboardUp, panel) { if (panel && keyboardUp && editor.hasFocus()) hideKeyboard() }
+    // the keyboard put away (its hide key, Back): the text lets go too, so no cursor is left blinking. Not when a panel
+    // took its place: the panel keeps the selection to act on
+    val keyboardWasUp = remember { booleanArrayOf(false) }
+    LaunchedEffect(keyboardUp) {
+        if (keyboardWasUp[0] && !keyboardUp && !panel && !insert) editor.clearFocus()
+        keyboardWasUp[0] = keyboardUp
+    }
     // the swipe below outlives this composition: it reads whether the keyboard is up now, not when the note opened
     // (a note opened while typing could otherwise never be swiped up again)
     val keyboardNow by rememberUpdatedState(keyboardUp)

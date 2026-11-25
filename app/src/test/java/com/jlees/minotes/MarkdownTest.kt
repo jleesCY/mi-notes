@@ -54,6 +54,22 @@ class MarkdownTest {
 
     @Test fun untitledFileUsesItsName() = assertEquals("groceries", markdownToNote("milk", "groceries", "id", 1).title)
 
+    // a note without a title that opens with a big line keeps that line in its text after an export and import
+    @Test fun untitledNoteOpeningWithABigLineStaysUntitled() {
+        val body = RichText("Big\nsmall", listOf(Span(0, 3, SpanType.SIZE, "2.0")))
+        val back = markdownToNote(noteToMarkdown(Note("a", "", body)), "Untitled", "id", 1)
+        assertEquals("", back.title)
+        assertEquals("Big\nsmall", back.body.text)
+        assertEquals("plain notes stay plain", "milk", noteToMarkdown(Note("b", "", RichText("milk"))))
+    }
+
+    // a note without a title, exported as "Untitled 2.md", comes back without one (not titled after its file)
+    @Test fun exportedUntitledComesBackUntitled() {
+        assertEquals("", markdownToNote("milk", "Untitled 2", "id", 1).title)
+        assertEquals("", markdownToNote("milk", "Untitled", "id", 1).title)
+        assertEquals("Untitled ideas", markdownToNote("milk", "Untitled ideas", "id", 1).title)
+    }
+
     @Test fun escapedMarkersStayText() = assertEquals("a*b*c", fromMarkdown("a\\*b\\*c").text)
 
     @Test fun resizedPicturesKeepTheirWidth() {

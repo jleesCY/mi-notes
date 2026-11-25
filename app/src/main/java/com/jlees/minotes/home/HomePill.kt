@@ -52,7 +52,6 @@ import com.jlees.minotes.data.pans
 import com.jlees.minotes.ui.settings.Item
 import com.jlees.minotes.ui.settings.SectionHeader
 import com.jlees.minotes.ui.settings.segment
-import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 @Composable

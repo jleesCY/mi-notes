@@ -23,6 +23,42 @@ class EditorTest {
     /** What the editor last saved (typing is saved once it pauses). */
     private fun saved(): RichText { ShadowLooper.idleMainLooper(400, java.util.concurrent.TimeUnit.MILLISECONDS); return last ?: error("not saved") }
 
+    // ---- the title is the first line of one text
+    private fun titled(title: String, rt: RichText) = NoteEditText(ApplicationProvider.getApplicationContext()).apply { load(rt, title); onChange = { last = it } }
+
+    @Test fun theTitleIsTheFirstLine() {
+        val e = titled("Shop", RichText("milk", listOf(Span(0, 4, SpanType.PARA, "check"))))
+        assertEquals("Shop", e.title())
+        assertEquals(RichText("milk", listOf(Span(0, 4, SpanType.PARA, "check"))), e.body())
+    }
+
+    @Test fun pastingIntoTheTitleKeepsOnlyTheFirstLineThere() {
+        val e = titled("", RichText("old text"))
+        e.setSelection(0)
+        e.type("Groceries\neggs\nbread")
+        assertEquals("Groceries", e.title())
+        assertEquals("eggs\nbread\nold text", saved().text) // the rest goes into the body, above what was there
+    }
+
+    @Test fun writingBelowABlankTitleLeavesItBlank() {
+        val e = titled("", RichText(""))
+        e.setSelection(e.titleEnd() + 1)
+        e.type("just text")
+        assertEquals("", e.title())
+        assertEquals("just text", saved().text)
+    }
+
+    @Test fun theTitleLineStaysPlain() {
+        // a list item joined onto the title (backspace at the start of the body) leaves its list behind
+        val e = titled("Shop", RichText("milk", listOf(Span(0, 4, SpanType.PARA, "bullet"))))
+        e.text.delete(4, 5) // the title's line break
+        assertEquals("Shopmilk", e.title())
+        e.setSelection(0, 4)
+        e.setInline(Inline.WEIGHT, 700)
+        assertEquals(RichText(""), e.body())
+        assertEquals(0, e.text.getSpans(0, 4, com.jlees.minotes.editor.WeightSpan::class.java).size + e.text.getSpans(0, 4, com.jlees.minotes.editor.ParaSpan::class.java).size)
+    }
+
     @Test fun enterTwiceAtTheEndOfAListEndsIt() {
         val e = editor(RichText("One", listOf(Span(0, 3, SpanType.PARA, "bullet"))))
         e.setSelection(3)

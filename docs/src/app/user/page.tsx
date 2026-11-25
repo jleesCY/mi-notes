@@ -32,6 +32,7 @@ import {
   Pencil,
   Pin,
   Plus,
+  Zap,
   Quote,
   Redo2,
   RefreshCw,
@@ -127,7 +128,7 @@ export default function UserDocs() {
                 </div>
                 <div className="space-y-6 order-1 lg:order-2">
                   <p className="text-base sm:text-lg text-on-surface-variant leading-relaxed font-medium">
-                    A note is a title and its text. In a note the Pill becomes your toolbar, and while you type it docks above the keyboard. Everything is saved as you go: there&apos;s no Save button.
+                    A note is one text, and its title is simply the first line: leave that line blank and the note has no title. The keyboard opens when you tap the text (selecting doesn&apos;t open it), and putting it away lets go of the text. In a note the Pill becomes your toolbar, and while you type it docks above the keyboard. Everything is saved as you go: there&apos;s no Save button.
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
                     <GuideItem icon={<Type size={18} />} title="Aa" desc="The formatting panel: styles, sizes, colours and more." />
@@ -391,6 +392,12 @@ export default function UserDocs() {
                   <GuideItem icon={<Share2 size={18} />} title="Share a Note" desc="Share sends a note as plain text; Markdown sends it as a .md file. Export saves that file wherever you choose." />
                   <div id="share-to">
                     <GuideItem icon={<StickyNote size={18} />} title="Send Text to mi. Notes" desc="In any app, share some text and choose mi. Notes: it becomes a new note." />
+                  </div>
+                  <div id="shortcut">
+                    <GuideItem icon={<Plus size={18} />} title="New Note Shortcut" desc="Hold the mi. Notes icon on your home screen for New Note, or drag it out as an icon of its own." />
+                  </div>
+                  <div id="automation">
+                    <GuideItem icon={<Zap size={18} />} title="Automation Links" desc="Apps like Tasker can open minotes://new?title=…&text=… for a new note, or minotes://append?title=…&text=… to add lines to the end of the note with that title (a new one if there's none). The note opens so you see what was added. Links only add: they can't change or delete anything, and web pages can't open them." />
                   </div>
                   <GuideItem icon={<Copy size={18} />} title="Copy" desc="The copy button in a note's menu copies its text." />
                   <div id="updates">

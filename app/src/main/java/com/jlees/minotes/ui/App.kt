@@ -278,6 +278,11 @@ internal fun MorphingPill(from: () -> Rect?, to: () -> Rect?, m: () -> Float, z:
     val density = LocalDensity.current
     val fromRadius = with(density) { (if (ui.radius >= 20) 35 else ui.radius * 2).dp.toPx() }
     val bar = ui.pillBar; val high = ui.cs.surfaceContainerHigh
+    // there only while it moves (as mi. Browser's sheet morph): at rest the real Pill is there, and a hidden copy left on
+    // top of it would take its touches and swipes. Recomposes only when this flips, not every frame
+    val progress by rememberUpdatedState(m)
+    val moving by remember { derivedStateOf { progress().let { it > 0.001f && it < 0.999f } } }
+    if (!moving) return
     /**
      * Where it is now: [m] of the way between the two Pills; null while either isn't measured. [m] is read first, always:
      * it's what changes every frame, so whatever reads this (its place, its size) is redone every frame, and picks up a
@@ -298,8 +303,8 @@ internal fun MorphingPill(from: () -> Rect?, to: () -> Rect?, m: () -> Float, z:
                 layout(w, h) { p.place(0, 0) }
             }
             .graphicsLayer {
-                val t = m()
-                alpha = if (t > 0.001f && t < 0.999f && now() != null) 1f else 0f
+                val t = m().coerceIn(0f, 1f) // a spring can carry it a little past either end
+                alpha = if (now() != null) 1f else 0f
                 shape = RoundedCornerShape(lerp(minOf(fromRadius, size.height / 2), size.height / 2, t)); clip = true
                 shadowElevation = lerp(10f, 6f, t).dp.toPx()
             }

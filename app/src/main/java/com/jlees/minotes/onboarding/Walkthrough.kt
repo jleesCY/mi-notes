@@ -76,14 +76,15 @@ private enum class Page(val title: String, val fromLeft: Boolean) { TRASH("Recen
 
 /** The tour. [inside]: the caption once the step's page is open. [chips]: what the step needs, ticked off as it's done. */
 private enum class Step(val title: String, val text: String, val inside: String = "", val chips: List<Task> = emptyList(), val page: Page? = null) {
-    UNDO("Undo and Redo", "In a note, swipe its Pill right to undo and left to redo.", chips = listOf(Task.UNDO, Task.REDO)),
-    BACK("Back to Your Notes", "Swipe the note's Pill up to go back to your notes."),
     HOLD("Hold a Note", "Hold a note to pick it up, then drag it somewhere else. Let go without moving for its menu."),
     TRASH("Recently Deleted", "Swipe the Pill right for Recently Deleted.", "Notes you delete wait here for a while.",
         listOf(Task.RESTORE, Task.LEAVE_TRASH), Page.TRASH),
     SETTINGS("Settings", "Swipe the Pill left for Settings.", "Every setting is here. Inside a section, swipe its Pill right to go up a level.",
         listOf(Task.LEAVE_SETTINGS), Page.SETTINGS),
     SEARCH("Search", "Hold the Pill to search your notes."),
+    OPEN("Open a Note", "Tap a note to open it."),
+    UNDO("Undo and Redo", "In a note, swipe its Pill right to undo and left to redo.", chips = listOf(Task.UNDO, Task.REDO)),
+    BACK("Back to Your Notes", "Swipe the note's Pill up to go back to your notes."),
     DONE("You're All Set", "That's every gesture. Enjoy mi. Notes."),
 }
 
@@ -124,7 +125,7 @@ fun Walkthrough(vm: NotesViewModel) {
 
     // ---- the copy's state
     val notes = remember { mutableStateListOf(*GUIDE_NOTES.toTypedArray()) }
-    val open = remember { Animatable(1f) }     // the open note: 0 its card … 1 filling the screen (it starts open)
+    val open = remember { Animatable(0f) }     // the open note: 0 its card … 1 filling the screen (the tour starts on the home page)
     var undone by remember { mutableStateOf(false) } // its last line taken back by an undo
     val pageP = remember { Animatable(0f) }    // the step's page: 0 away … 1 in place
     val search = remember { Animatable(0f) }   // the Pill turning into the search field
@@ -136,7 +137,7 @@ fun Walkthrough(vm: NotesViewModel) {
     var restRect by remember { mutableStateOf<Rect?>(null) }
     var pageOpened by remember { mutableStateOf(false) }
     val cardRects = remember { mutableStateMapOf<String, Rect>() }
-    val noteId = "guide_2" // the note the tour starts in
+    val noteId = "guide_2" // the note the tour opens
     LaunchedEffect(step) { pageP.snapTo(0f); pageOpened = false }
 
     Box(Modifier.fillMaxSize().zIndex(1000f).background(homeBackground()).blockTouches()) {
@@ -167,7 +168,9 @@ fun Walkthrough(vm: NotesViewModel) {
                                         scaleX = lift; scaleY = lift
                                         alpha = if (n.id == noteId && open.value > 0f) 0f else 1f // the note is out of its card
                                     }
-                                    .combinedClickable(onClick = {}, onLongClick = {
+                                    .combinedClickable(onClick = {
+                                        if (step == Step.OPEN && n.id == noteId) scope.launch { open.animateTo(1f, Motion.switcher); complete() }
+                                    }, onLongClick = {
                                         if (step == Step.HOLD) { haptics?.longPress(); lifted = n.id; complete(); scope.launch { delay(700); lifted = null } }
                                     }),
                             ) { NoteCardView(n, 4, false, lifted == n.id, false, null, Modifier, uniform = true) }
@@ -275,6 +278,7 @@ fun Walkthrough(vm: NotesViewModel) {
             stepDone || step == Step.DONE -> null
             step == Step.UNDO || step == Step.BACK -> toolRect
             step == Step.HOLD -> cardRects[notes.firstOrNull()?.id]
+            step == Step.OPEN -> cardRects[noteId]
             step == Step.SEARCH -> barRect
             pageOpen -> null
             else -> barRect
@@ -294,6 +298,7 @@ fun Walkthrough(vm: NotesViewModel) {
                 Step.UNDO -> toolRect to if (Task.UNDO in lit) Move.LEFT else Move.RIGHT
                 Step.BACK -> toolRect to Move.UP
                 Step.HOLD -> cardRects[notes.firstOrNull()?.id] to Move.HOLD
+                Step.OPEN -> cardRects[noteId] to Move.HOLD
                 Step.SEARCH -> barRect to Move.HOLD
                 else -> when {
                     page == null -> null to Move.HOLD
@@ -307,7 +312,7 @@ fun Walkthrough(vm: NotesViewModel) {
 
         // ---- the caption: at the top, out of the Pill's way; while a page or the note is open it moves down to sit above
         // their Pills, so their headers stay in view
-        val low = (pageOpen && pageP.value > 0.5f) || open.value > 0.5f || step == Step.HOLD || step == Step.DONE // out of the way of what to try
+        val low = (pageOpen && pageP.value > 0.5f) || open.value > 0.5f || step == Step.HOLD || step == Step.OPEN || step == Step.DONE // out of the way of what to try
         val bias by animateFloatAsState(if (low) 1f else -1f, spring(0.85f, 300f), label = "caption")
         Box(Modifier.fillMaxSize().zIndex(9f).windowInsetsPadding(WindowInsets.systemBars).padding(top = 8.dp, bottom = 96.dp)) {
             Column(
@@ -342,6 +347,7 @@ fun Walkthrough(vm: NotesViewModel) {
                         // skipping a step leaves the copy where that step would have
                         scope.launch {
                             when (step) {
+                                Step.OPEN -> open.snapTo(1f)
                                 Step.UNDO -> undone = false
                                 Step.BACK -> open.snapTo(0f)
                                 else -> pageP.snapTo(0f)
@@ -375,7 +381,7 @@ private fun GuideNote(p: Float, from: Rect?, undone: Boolean, onTool: (Rect) -> 
             val sc = lerp(s0, 1f, p)
             transformOrigin = TransformOrigin(0f, 0f); scaleX = sc; scaleY = sc
             translationX = lerp(o.left, 0f, p); translationY = lerp(o.top, 0f, p)
-            shape = RoundedCornerShape(lerp(20.dp.toPx() / s0, 0f, p)); clip = true
+            shape = RoundedCornerShape(lerp(20.dp.toPx() / s0, 0f, p).coerceAtLeast(0f)); clip = true // a spring can carry p past 1
             shadowElevation = if (p < 1f) 8.dp.toPx() else 0f
         }.background(homeBackground()).blockTouches().windowInsetsPadding(WindowInsets.systemBars),
     ) {

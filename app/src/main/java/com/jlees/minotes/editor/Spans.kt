@@ -50,6 +50,19 @@ class WeightSpan(val weight: Int) : MetricAffectingSpan() {
     }
 }
 
+/**
+ * The note's title: the editor's first line (NoteEditText, titled), big and extrabold, with room below it. Not saved as
+ * formatting: the first line is saved as the note's title, the rest as its body.
+ */
+class TitleSpan(private val px: Float, private val gap: Int) : MetricAffectingSpan(), android.text.style.LineHeightSpan {
+    private val weight = WeightSpan(800)
+    override fun updateDrawState(tp: TextPaint) { tp.textSize = px; weight.updateDrawState(tp) }
+    override fun updateMeasureState(tp: TextPaint) { tp.textSize = px; weight.updateMeasureState(tp) }
+    override fun chooseHeight(text: CharSequence, start: Int, end: Int, spanstartv: Int, lineHeight: Int, fm: Paint.FontMetricsInt) {
+        if (end == (text as Spanned).getSpanEnd(this)) { fm.descent += gap; fm.bottom += gap } // below its last line
+    }
+}
+
 class ItalicSpan : MetricAffectingSpan() {
     override fun updateDrawState(tp: TextPaint) = apply(tp)
     override fun updateMeasureState(tp: TextPaint) = apply(tp)

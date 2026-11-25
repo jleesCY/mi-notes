@@ -22,8 +22,10 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.jlees.minotes.notes.Note
 import com.jlees.minotes.notes.checklistProgress
+import com.jlees.minotes.notes.cardTitle
 import com.jlees.minotes.notes.displayTitle
 import com.jlees.minotes.notes.previewLines
 import com.jlees.minotes.ui.noteCard
@@ -108,7 +110,11 @@ fun uniformCardHeight(previewLines: Int) = (98 + previewLines * 18).dp
 fun NoteCardView(n: Note, previewLines: Int, showDate: Boolean, lifted: Boolean, pressed: Boolean, folderName: String?, gestures: Modifier, uniform: Boolean = false) {
     val ui = LocalUi.current
     val scale by animateFloatAsState(if (lifted) 1.02f else if (pressed) 0.97f else 1f, Motion.fastSpatial(), label = "card")
-    val lines = remember(n.body, n.title, previewLines) { previewLines(n, previewLines) }
+    val title = cardTitle(n)
+    // staggered: at most the Preview Lines setting, and a note without a title shows the two lines its title would have
+    // taken (so it's never thinner than a titled one for want of a title); the grid's fixed card: as much as fits
+    val previewMax = if (uniform) 40 else previewLines + if (title == null) 2 else 0
+    val lines = remember(n.body, n.title, previewMax) { previewLines(n, previewMax) }
     val progress = remember(n.body) { checklistProgress(n.body) }
     Column(
         Modifier.graphicsLayer { scaleX = scale; scaleY = scale; shadowElevation = if (lifted) 8.dp.toPx() else 0f; shape = RoundedCornerShape(ui.radius.coerceAtMost(20).dp); clip = true }
@@ -118,12 +124,16 @@ fun NoteCardView(n: Note, previewLines: Int, showDate: Boolean, lifted: Boolean,
             .semantics(mergeDescendants = true) {}
             .padding(16.dp),
     ) {
-        Row(verticalAlignment = Alignment.Top) {
-            Txt(displayTitle(n), 16f, ui.cs.onSurface, ui.bold, Modifier.weight(1f), maxLines = 2)
+        if (title != null || n.pinned) Row(verticalAlignment = Alignment.Top) {
+            Txt(title ?: "", 16f, ui.cs.onSurface, ui.bold, Modifier.weight(1f), maxLines = 2)
             if (n.pinned) Sym("keep", 16f, ui.cs.primary, Modifier.padding(start = 6.dp, top = 2.dp))
         }
-        if (lines.isNotEmpty()) Txt(lines.joinToString("\n"), 13f, ui.cs.onSurfaceVariant, ui.regular,
-            Modifier.padding(top = 6.dp).then(if (uniform) Modifier.weight(1f, fill = false) else Modifier), maxLines = previewLines, lineHeight = 18f)
+        val top = if (title != null || n.pinned) 6.dp else 0.dp
+        if (lines.isNotEmpty() && uniform) androidx.compose.foundation.layout.BoxWithConstraints(Modifier.padding(top = top).weight(1f).fillMaxWidth()) {
+            // every whole line that fits the card, down to its date
+            val lineH = with(androidx.compose.ui.platform.LocalDensity.current) { 18.sp.toDp() }
+            Txt(lines.joinToString("\n"), 13f, ui.cs.onSurfaceVariant, ui.regular, maxLines = (maxHeight / lineH).toInt().coerceAtLeast(1), lineHeight = 18f)
+        } else if (lines.isNotEmpty()) Txt(lines.joinToString("\n"), 13f, ui.cs.onSurfaceVariant, ui.regular, Modifier.padding(top = top), maxLines = previewMax, lineHeight = 18f)
         if (n.body.images.isNotEmpty() && lines.isEmpty()) Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Sym("image", 16f, ui.cs.onSurfaceVariant, Modifier.padding(end = 6.dp)); Txt(if (n.body.images.size == 1) "1 picture" else "${n.body.images.size} pictures", 13f, ui.cs.onSurfaceVariant, ui.regular)
         }
@@ -132,7 +142,7 @@ fun NoteCardView(n: Note, previewLines: Int, showDate: Boolean, lifted: Boolean,
             progress?.let { (d, t) -> "$d/$t done" },
             folderName,
         )
-        if (uniform) Spacer(Modifier.weight(1f)) // the date sits at the bottom of every card alike
+        if (uniform && lines.isEmpty()) Spacer(Modifier.weight(1f)) // the date sits at the bottom of every card alike (the preview fills down to it)
         if (meta.isNotEmpty()) Txt(meta.joinToString(" · "), 12f, ui.cs.onSurfaceVariant.copy(alpha = 0.8f), ui.semibold, Modifier.padding(top = 10.dp), maxLines = 1)
     }
 }
