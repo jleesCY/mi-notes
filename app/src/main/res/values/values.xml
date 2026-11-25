@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">mi. Notes</string>
+    <!-- the editor's screen-reader action that ticks the checklist item at the cursor -->
+    <item name="tick_item" type="id" />
     <color name="black">#000000</color>
     <!-- every mi. app icon sits on this near-black -->
     <color name="icon_background">#0D0D0F</color>

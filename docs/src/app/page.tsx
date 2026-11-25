@@ -4,17 +4,11 @@ import { motion } from "framer-motion";
 import { Download, ChevronRight, Zap, Palette, Shield, Sparkles, FolderOpen, Check } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
+import { DeviceMockup } from "@/components/device-mockup";
 
-// Helper to handle basePath for GitHub Pages
-const getAssetPath = (path: string) => {
-  const isProd = process.env.NODE_ENV === 'production';
-  const repoName = process.env.NEXT_PUBLIC_REPO_NAME || "mi-notes";
-  const basePath = isProd ? `/${repoName}` : "";
-  return `${basePath}${path}`;
-};
 
 export default function Home() {
-  const GITHUB_URL = "https://github.com/jleescy/mi-notes";
+  const GITHUB_URL = "https://github.com/mi-app-hub/mi-notes";
 
   return (
     <main className="min-h-screen bg-surface-container-low text-on-surface overflow-x-hidden transition-colors duration-300">
@@ -54,7 +48,7 @@ export default function Home() {
             transition={{ duration: 0.8, delay: 0.2 }}
             className="relative flex justify-center lg:justify-end mt-8 lg:mt-0"
           >
-            <DeviceMockup src={getAssetPath("/images/home.jpg")} color="blue" />
+            <DeviceMockup src="/images/home.jpg" color="blue" />
           </motion.div>
         </div>
       </section>
@@ -73,7 +67,7 @@ export default function Home() {
         
         {/* The Pill */}
         <FeatureDetail 
-          image={getAssetPath("/images/editor.jpg")}
+          image="/images/editor.jpg"
           tag="Writing"
           tagColor="text-primary bg-primary-container border-primary/20"
           title="Real formatting. One small Pill."
@@ -90,7 +84,7 @@ export default function Home() {
 
         {/* Formatting */}
         <FeatureDetail 
-          image={getAssetPath("/images/format.jpg")}
+          image="/images/format.jpg"
           tag="Formatting"
           tagColor="text-tertiary bg-tertiary-container border-tertiary/20"
           title="Everything on one panel."
@@ -107,15 +101,15 @@ export default function Home() {
 
         {/* Lists and blocks */}
         <FeatureDetail 
-          image={getAssetPath("/images/insert.jpg")}
+          image="/images/insert.jpg"
           tag="Structure"
           tagColor="text-secondary bg-secondary-container border-secondary/20"
           title="Lists that behave."
-          description="Bullets, numbers and checklists carry on with Enter and end on an empty line, like every editor you know. The + adds dividers, quotes, code blocks and callouts, and ticked items can move to the bottom of their list."
+          description="Bullets, numbers and checklists carry on with Enter and end on an empty line, like every editor you know. The + adds dividers, quotes, code blocks and callouts, or scans a list off paper: boxes come in as a checklist, dots as bullets, numbers as a numbered list, read on your phone."
           bullets={[
             "Press Enter twice to end any list or block",
             "Tap a checkbox to tick it off",
-            "Dividers, quotes, code and callouts",
+            "Scan text from a photo or a picture",
             "Exports to Markdown, and back"
           ]}
           imageSide="right"
@@ -124,7 +118,7 @@ export default function Home() {
 
         {/* Organising */}
         <FeatureDetail 
-          image={getAssetPath("/images/menu.jpg")}
+          image="/images/menu.jpg"
           tag="Organization"
           tagColor="text-tertiary bg-tertiary-container border-tertiary/20"
           title="Hold a note. Put it anywhere."
@@ -141,7 +135,7 @@ export default function Home() {
 
         {/* Customization */}
         <FeatureDetail 
-          image={getAssetPath("/images/settings.jpg")}
+          image="/images/settings.jpg"
           tag="Aesthetic"
           tagColor="text-secondary bg-secondary-container border-secondary/20"
           title="Deeply, truly yours."
@@ -176,7 +170,7 @@ export default function Home() {
                <Download size={28} />
                Install Latest APK
              </a>
-             <span className="text-sm opacity-40 font-bold tracking-widest uppercase">Requires Android 8.0+</span>
+             <span className="text-sm opacity-40 font-bold tracking-widest uppercase">Requires Android 8.0+ · 64-bit</span>
           </div>
         </div>
       </section>
@@ -275,28 +269,5 @@ function FeatureDetail({ image, tag, tagColor, title, description, bullets, imag
         {imgBlock}
       </div>
     </section>
-  );
-}
-
-function DeviceMockup({ src, color }: { src: string, color?: string }) {
-  const glowStyles: any = {
-    blue: "bg-primary/20 shadow-primary/30",
-    purple: "bg-tertiary/20 shadow-tertiary/30",
-    pink: "bg-tertiary/20 shadow-tertiary/30",
-    orange: "bg-secondary/20 shadow-secondary/30",
-    cyan: "bg-secondary/20 shadow-secondary/30",
-  };
-
-  return (
-    <div className="relative group">
-      <div className={`absolute -inset-10 ${color ? glowStyles[color].split(' ')[0] : 'bg-primary-container'} rounded-full blur-[80px] group-hover:opacity-100 transition-opacity opacity-50`} />
-      <div className={`relative w-[220px] sm:w-[280px] bg-black rounded-[2rem] sm:rounded-[2.5rem] p-2 sm:p-3 shadow-2xl border-[4px] sm:border-[6px] border-[#1a1a1a] overflow-hidden transition-transform duration-500 group-hover:scale-105 group-hover:-rotate-1`}>
-        <img 
-          src={src} 
-          alt="mi. App Screenshot" 
-          className="w-full h-auto block rounded-[1.4rem] sm:rounded-[1.8rem]"
-        />
-      </div>
-    </div>
   );
 }

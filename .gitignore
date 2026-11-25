@@ -19,6 +19,9 @@ keystore.properties
 node_modules/
 docs/.next/
 docs/out/
+# made from the app's accent by docs/scripts/theme.mjs before every dev and build
+docs/src/app/theme.css
+docs/src/app/theme.json
 
 # macOS
 .DS_Store

@@ -5,20 +5,15 @@ import { Search } from "./search";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { getAssetPath } from "@/lib/asset";
 
-const getAssetPath = (path: string) => {
-  const isProd = process.env.NODE_ENV === 'production';
-  const repoName = process.env.NEXT_PUBLIC_REPO_NAME || "mi-notes";
-  const basePath = isProd ? `/${repoName}` : "";
-  return `${basePath}${path}`;
-};
 
-const GITHUB_URL = "https://github.com/jleescy/mi-notes";
+const GITHUB_URL = "https://github.com/mi-app-hub/mi-notes";
 
 export function Navbar() {
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const isHome = pathname === "/" || pathname === "/mi-notes/";
+  const isHome = pathname === "/"; // (without the base path)
   const isDocsPage = pathname.includes('/user') || pathname.includes('/developer');
 
   return (

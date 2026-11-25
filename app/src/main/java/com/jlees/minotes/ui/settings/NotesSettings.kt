@@ -7,11 +7,12 @@ import com.jlees.minotes.data.Settings
 fun notesSection(vm: NotesViewModel): SettingsSection {
     val s = vm.settings
     fun set(f: Settings.() -> Settings) = vm.updateSettings(f)
-    return SettingsSection("notes", "Notes", "sticky_note_2", "How notes appear and behave", listOf(
+    return SettingsSection("notes", "Notes", "sticky_note_2", "How notes appear and behave", listOfNotNull(
         SettingsHeading("Home"),
-        SettingsRow("Layout", "grid list cards rows view") { ChoiceItem("grid_view", "Layout", null, s.layout) { set { copy(layout = it) } } },
+        SettingsRow("Layout", "grid list cards rows view staggered uniform clean same size") { ChoiceItem("grid_view", "Layout", "Staggered cards fit their note; grid cards are all one size", s.layout) { set { copy(layout = it) } } },
         SettingsRow("Sort By", "order sort manual edited created title alphabetical") { ChoiceItem("sort", "Sort By", "Pinned notes always come first", s.sort) { set { copy(sort = it) } } },
-        SettingsRow("Preview Lines", "preview card lines length") {
+        // cards only: List rows show one line, so it's hidden there
+        if (s.layout == com.jlees.minotes.data.NotesLayout.LIST) null else SettingsRow("Preview Lines", "preview card lines length") {
             ChoiceItem("notes", "Preview Lines", "How much of each note its card shows", listOf("3" to "3", "6" to "6", "9" to "9", "12" to "12"), s.previewLines.toString()) { set { copy(previewLines = it.toInt()) } }
         },
         SettingsRow("Show Dates", "date time edited") { SwitchItem("calendar_today", "Show Dates", "When each note was last edited", s.showDates) { set { copy(showDates = it) } } },

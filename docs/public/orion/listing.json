@@ -1,0 +1,18 @@
+{
+  "repoUrl": "https://github.com/mi-app-hub/mi-notes",
+  "name": "mi. Notes",
+  "author": "mi-app-hub",
+  "id": "mi-notes",
+  "packageName": "com.jlees.minotes",
+  "icon": "https://mi-app-hub.github.io/mi-notes/icon.png",
+  "screenshots": [
+    "https://mi-app-hub.github.io/mi-notes/promo/mi-notes-1-home.png",
+    "https://mi-app-hub.github.io/mi-notes/promo/mi-notes-2-note.png",
+    "https://mi-app-hub.github.io/mi-notes/promo/mi-notes-3-format.png",
+    "https://mi-app-hub.github.io/mi-notes/promo/mi-notes-4-scan-checklist.png",
+    "https://mi-app-hub.github.io/mi-notes/promo/mi-notes-5-note-menu.png",
+    "https://mi-app-hub.github.io/mi-notes/promo/mi-notes-6-look-and-feel.png"
+  ],
+  "shortDescription": "A private, gesture-driven notes app built around one Pill.",
+  "description": "mi. Notes is a notes app that stays out of your way. Your notes sit in folders on one calm page, with a Pill at the bottom: tap + to write, hold it to search, swipe it for Settings or Recently Deleted.\n\n• Real formatting: titles, headings, bold, colours, highlights and alignment, on one small panel.\n• Bullets, numbers and checklists that carry on when you press Enter.\n• Scan text from a photo or a picture, lists and all, read on your phone.\n• Folders, pins and colours; hold a note to drag it where you want it.\n• Undo after every delete, and Recently Deleted for 30 days.\n• One-file backups and Markdown export, so your notes go wherever you do.\n• Material 3 Expressive design, coloured by your wallpaper or your choice of accent.\n\nNo accounts, no tracking."
+}

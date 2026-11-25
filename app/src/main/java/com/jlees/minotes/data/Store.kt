@@ -21,9 +21,23 @@ val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; coerceInputVa
 class JsonStore(private val dir: File) {
     init { dir.mkdirs() }
 
-    fun <T> read(key: String, s: KSerializer<T>): T? = try {
-        File(dir, "$key.json").takeIf { it.exists() }?.readText()?.let { json.decodeFromString(s, it) }
-    } catch (_: Exception) { null }
+    /** A file was there but couldn't be read, and was kept aside as "<key>.json.broken-<time>" (the app says so). */
+    @Volatile var keptAside = false
+
+    /**
+     * The value saved under [key], or null when there's none. A file that's there but can't be read (damaged, or written
+     * by something this version can't make sense of) is moved aside rather than left for the next save to overwrite: the
+     * app starts without it, and the file stays in the data folder for a later version, or a person, to recover.
+     */
+    fun <T> read(key: String, s: KSerializer<T>): T? {
+        val f = File(dir, "$key.json")
+        if (!f.exists()) return null
+        return try { json.decodeFromString(s, f.readText()) } catch (_: Exception) {
+            f.renameTo(File(dir, "$key.json.broken-${System.currentTimeMillis()}"))
+            keptAside = true
+            null
+        }
+    }
 
     /**
      * A failed write (storage full) keeps the last good file; the next change tries again. Written as a stream, never as
@@ -36,16 +50,11 @@ class JsonStore(private val dir: File) {
         val tmp = File(dir, "$key.json.tmp")
         try {
             tmp.parentFile?.mkdirs()
-            tmp.outputStream().buffered().use { json.encodeToStream(s, value, it) }
+            tmp.writeSynced { json.encodeToStream(s, value, it) }
             tmp.renameTo(File(dir, "$key.json"))
         } catch (_: IOException) { tmp.delete() }
     }
 
-    fun delete(key: String) { File(dir, "$key.json").delete() }
-    /** The keys under folder [folder] ("extension_storage" → its files' names, without .json). */
-    fun keysIn(folder: String): List<String> = File(dir, folder).listFiles()?.filter { it.name.endsWith(".json") }?.map { it.name.removeSuffix(".json") }.orEmpty()
-
-    fun clear() { dir.listFiles()?.forEach { it.delete() } }
 }
 
 /**
@@ -54,8 +63,25 @@ class JsonStore(private val dir: File) {
  * changes: state that keeps changing (a download's progress) is still written every [delayMs], not only once it stops.
  */
 class Saver<T>(private val delayMs: Long, private val read: () -> T, private val write: (T) -> Unit) {
-    fun writeNow() = write(read())
+    /** The value on disk: the one loaded, then the last one written. State is immutable, so the same object is unchanged. */
+    @Volatile private var written: Any? = null
+
+    /** Writes the state now if it changed since it was last on disk (leaving the app does this every time). */
+    fun writeNow() { val v = read(); if (v !== written) { write(v); written = v } }
+
     fun launchIn(scope: CoroutineScope) = scope.launch {
-        snapshotFlow(read).drop(1).conflate().collect { delay(delayMs); val v = read(); withContext(Dispatchers.IO) { write(v) } }
+        written = read()
+        snapshotFlow(read).drop(1).conflate().collect { delay(delayMs); val v = read(); withContext(Dispatchers.IO) { write(v) }; written = v }
     }
+}
+
+/**
+ * Writes this file and waits until its bytes are on disk before returning: a phone switched off (or an app killed)
+ * right after leaves the whole file or none of it, never an empty one that a rename then puts in place of good data.
+ */
+fun File.writeSynced(write: (java.io.OutputStream) -> Unit) = java.io.FileOutputStream(this).use { fos ->
+    val out = fos.buffered()
+    write(out)
+    out.flush()
+    fos.fd.sync()
 }

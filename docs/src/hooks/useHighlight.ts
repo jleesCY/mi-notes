@@ -3,6 +3,14 @@
 import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 
+/** Scrolls [el] into view and flashes it (the highlight-section animation, restarted if it's already run). */
+export function highlight(el: HTMLElement) {
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  el.classList.remove('highlight-section');
+  void el.offsetWidth; // a reflow, so the animation starts again
+  el.classList.add('highlight-section');
+}
+
 export function useHighlight() {
   const pathname = usePathname();
 
@@ -13,12 +21,7 @@ export function useHighlight() {
         const element = document.getElementById(hash);
         if (element) {
           // Add a small delay to ensure page is rendered and scroll-margin is respected
-          setTimeout(() => {
-            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            element.classList.remove('highlight-section');
-            void element.offsetWidth;
-            element.classList.add('highlight-section');
-          }, 500);
+          setTimeout(() => highlight(element), 500);
         }
       }
     };

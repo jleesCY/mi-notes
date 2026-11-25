@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- no INTERNET permission: mi. Notes never talks to the network; notes stay on the phone -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- the only connection: checking GitHub for a newer version of mi. Notes (update/). Notes never leave the phone -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- in-app updates: hand the downloaded release APK to the system installer -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- added by ML Kit's reporting (removed below), which mi. Notes doesn't use -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
@@ -34,5 +40,11 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- ML Kit (scanning text) reports how it's used to Google through these; without them nothing is sent, so the
+             update check stays mi. Notes' only connection (PRIVACY.md). The recognizer itself works on the phone -->
+        <service android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery" tools:node="remove" />
+        <service android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService" tools:node="remove" />
+        <receiver android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver" tools:node="remove" />
     </application>
 </manifest>

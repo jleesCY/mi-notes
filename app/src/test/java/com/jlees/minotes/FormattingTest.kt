@@ -52,11 +52,11 @@ class FormattingTest {
     }
 
     @Test fun enterCarriesTheListIntoTheNewLineUnticked() {
-        val t = ed("milk")
+        val t = ed("milk\n") // as in the editor: its own last line break
         setPara(t, 0, ListKind.CHECK, 0, checked = true)
         t.insert(4, "\n")
         normalizeParagraphs(t)
-        assertEquals(listOf(ListKind.CHECK, ListKind.CHECK), kinds(t))
+        assertEquals(listOf(ListKind.CHECK, ListKind.CHECK, ListKind.NONE), kinds(t)) // the editor's own last line stays plain
         assertTrue(paraAt(t, 0)!!.checked)
         assertFalse(paraAt(t, 5)!!.checked)
     }
@@ -122,7 +122,7 @@ class FormattingTest {
             Span(11, 14, SpanType.HIGHLIGHT, "#FFD43B"), Span(11, 12, SpanType.FONT, "serif"),
         ))
         val t = ed("")
-        RichCodec.load(t, rt) { null }
+        RichCodec.load(t, rt, { _, _ -> null })
         assertEquals(rt.copy(spans = rt.spans.sortedWith(compareBy({ it.start }, { it.end }, { it.type }, { it.value }))), RichCodec.toRich(t))
     }
 
@@ -131,5 +131,29 @@ class FormattingTest {
         applyStyle(t, 2, 3, TextStyle.HEADING)
         assertEquals(TextStyle.HEADING, TextStyle.of(inlineValue(t, 0, 7, Inline.SIZE), inlineValue(t, 0, 7, Inline.WEIGHT)))
         assertEquals(1f, inlineValue(t, 8, 13, Inline.SIZE))
+    }
+
+    @Test fun editorTextEndsWithALineBreakTheNoteDoesNotHave() {
+        val rt = RichText("milk\n", listOf(Span(0, 4, SpanType.PARA, "bullet"), Span(5, 5, SpanType.PARA, "bullet")))
+        val t = ed("")
+        RichCodec.load(t, rt, { _, _ -> null })
+        assertEquals("milk\n\n", t.toString())
+        // the empty item at the end isn't the last line, so Android draws its bullet
+        assertEquals(ListKind.BULLET, paraAt(t, 5)?.kind)
+        assertNull(paraAt(t, 6))
+        assertEquals(rt, RichCodec.toRich(t))
+    }
+
+    @Test fun trailingLineComesBack() {
+        val t = ed("abc")
+        assertTrue(RichCodec.keepTrailingLine(t)); assertEquals("abc\n", t.toString())
+        assertFalse(RichCodec.keepTrailingLine(t))
+    }
+
+    @Test fun imageWidthRoundTrips() {
+        val rt = RichText("\uFFFC", listOf(Span(0, 1, SpanType.IMAGE, "a.jpg", width = 50)))
+        val t = ed("")
+        RichCodec.load(t, rt, { _, _ -> android.graphics.drawable.ColorDrawable(0) })
+        assertEquals(rt, RichCodec.toRich(t))
     }
 }

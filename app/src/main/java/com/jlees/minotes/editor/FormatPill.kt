@@ -1,25 +1,33 @@
-// The editor's Pill: the tools you reach for most (text format, checklist, list, picture, undo, redo) in one row, and
-// Aa opening the full text format panel above them, inside the Pill. It rides on the keyboard; the panel takes the
-// keyboard's place while it's open. Swiping the Pill sideways goes back to your notes.
+// The editor's Pill: the tools you reach for most (Aa, bold, checklist, bullets, numbers, +) in one row. Aa and +
+// open their panels up from the bottom (EditorPanels.kt). Swipe the Pill right to undo, left to redo (also buttons in
+// the Aa panel, and actions for screen readers), up to go back to your notes.
 package com.jlees.minotes.editor
+
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import com.jlees.minotes.scan.rememberScanner
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
 
 import android.text.Layout
 import android.view.inputmethod.InputMethodManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.ui.zIndex
+import androidx.compose.foundation.gestures.draggable
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -36,86 +44,129 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.jlees.minotes.notes.ListKind
 import com.jlees.minotes.notes.NoteImages
-import com.jlees.minotes.notes.TextFont
 import com.jlees.minotes.ui.common.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Text colours: chosen to read on both light and dark pages. 0 is the page's own text colour. */
-val TEXT_COLORS = listOf(0, 0xFFE5484D, 0xFFF76B15, 0xFFE2A300, 0xFF30A46C, 0xFF12A594, 0xFF0090FF, 0xFF8E4EC6, 0xFFD6409F, 0xFF8B8D98).map { it.toInt() }
-/** Highlights (drawn see-through, see HighlightSpan). 0 is none. */
-val HIGHLIGHTS = listOf(0, 0xFFFFD43B, 0xFF69DB7C, 0xFF4DABF7, 0xFFF783AC, 0xFFFFA94D, 0xFFB197FC).map { it.toInt() }
-private val SIZES = listOf(0.85f to "S", 1f to "M", 1.25f to "L", 1.5f to "XL", 2f to "2XL")
-private val WEIGHT_NAMES = mapOf(100 to "Thin", 200 to "Extra Light", 300 to "Light", 400 to "Regular", 500 to "Medium", 600 to "Semibold", 700 to "Bold", 800 to "Extra Bold", 900 to "Black", 1000 to "Heavy")
 
 @Composable
 fun BoxScope.FormatPill(
     editor: NoteEditText, tick: Int, panel: Boolean, setPanel: (Boolean) -> Unit, navDp: Float, imeDp: () -> Float,
-    onSize: (Int) -> Unit, onBack: () -> Unit,
+    onSize: (Int) -> Unit,
+    /** A swipe up: how far the finger has gone up (dp, negative), for the note to shrink with it exactly. */
+    onShrink: (dy: Float) -> Unit = {}, onShrinkRelease: (close: Boolean) -> Unit = {},
+    /** The note isn't fully open: the Pill hides (a copy above the note turns into the home bar's Pill). */
+    hidden: () -> Boolean = { false }, onPlace: (androidx.compose.ui.layout.LayoutCoordinates) -> Unit = {},
 ) {
     val ui = LocalUi.current
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val haptics = LocalHaptics.current
     val dx = remember { Animatable(0f) }
-    val screenW = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.toFloat()
-    val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            val name = withContext(Dispatchers.IO) { NoteImages.import(ctx, uri) }
-            if (name == null) Notices.show("Couldn't add the picture") else editor.insertImage(name)
-        }
-    }
+    var swipeArmed by remember { mutableStateOf(false) }
+    var swipeUp by remember { mutableStateOf<Boolean?>(null) } // which way this swipe goes, once it's clear
+    var shrink by remember { mutableFloatStateOf(0f) }          // how far a swipe up has shrunk the note (0..1)
+    var insert by remember { mutableStateOf(false) } // the + panel is open
+    // closing it brings the keyboard back, unless it closed for the format panel (which keeps the keyboard away)
+    val panelNow by rememberUpdatedState(panel)
+    InsertPanel(editor, insert, close = { insert = false }, keyboardBack = { !panelNow })
     fun hideKeyboard() = ctx.getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(editor.windowToken, 0)
+    // the panel takes the keyboard's place: a keyboard that shows up late (after a long press, say) goes away again.
+    // Tapping the text closes the panel first (NoteEditText.onTouchText), so that keyboard stays.
+    @OptIn(ExperimentalLayoutApi::class) val keyboardUp = WindowInsets.isImeVisible
+    // the panel keeps the keyboard away from the note; a keyboard for something else (its size box) is left be
+    LaunchedEffect(keyboardUp, panel) { if (panel && keyboardUp && editor.hasFocus()) hideKeyboard() }
+    // the swipe below outlives this composition: it reads whether the keyboard is up now, not when the note opened
+    // (a note opened while typing could otherwise never be swiped up again)
+    val keyboardNow by rememberUpdatedState(keyboardUp)
     tick // re-read the editor's state whenever it changes
+    // typing: the Pill docks on the keyboard, edge to edge, its bottom corners square and its shadow gone. It follows
+    // where the keyboard is going, not whether it's still on screen: going down, the Pill turns back as it starts to,
+    // instead of riding it down docked and only turning back once it's gone
+    @OptIn(ExperimentalLayoutApi::class)
+    val keyboardComing = WindowInsets.imeAnimationTarget.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+    val dock by androidx.compose.animation.core.animateFloatAsState(if (keyboardComing) 1f else 0f, if (keyboardComing) Motion.enter(200) else Motion.exit(150), label = "dock")
 
     Box(
         Modifier.align(Alignment.BottomCenter).fillMaxWidth().paddingDp(bottom = { maxOf(imeDp(), navDp) })
-            .padding(start = 10.dp, end = 10.dp, bottom = 10.dp).onSizeChanged { onSize(it.height) },
+            .paddingDp(start = { 10f * (1f - dock) }, end = { 10f * (1f - dock) }, bottom = { 10f * (1f - dock) }),
         contentAlignment = Alignment.BottomCenter,
     ) {
         Column(
-            Modifier.widthIn(max = PILL_MAX_WIDTH.dp).fillMaxWidth()
+            // only the Pill's own height: the editor already ends above the keyboard
+            Modifier.widthIn(max = if (dock > 0f) androidx.compose.ui.unit.Dp.Infinity else PILL_MAX_WIDTH.dp).fillMaxWidth().onSizeChanged { onSize(it.height) }
+                .onGloballyPositioned { onPlace(it) }
                 .graphicsLayer {
-                    translationX = dx.value.dp.toPx()
-                    val r = if (ui.radius >= 20) 35.dp.toPx() else (ui.radius * 2).dp.toPx()
-                    shape = RoundedCornerShape(minOf(r, size.height / 2)); clip = true; shadowElevation = 10.dp.toPx()
+                    alpha = if (hidden()) 0f else 1f
+                    val r = minOf(if (ui.radius >= 20) 35.dp.toPx() else (ui.radius * 2).dp.toPx(), size.height / 2)
+                    val b = r * (1f - dock)
+                    shape = RoundedCornerShape(topStart = r, topEnd = r, bottomStart = b, bottomEnd = b); clip = true
+                    shadowElevation = 10.dp.toPx() * (1f - dock)
                 }
                 .background(ui.pillBar)
-                // swipe it sideways: back to your notes (it follows the finger, and ticks where letting go goes back)
+                // swipe it right to undo, left to redo: the Pill stays put while its tools give way to the undo (or
+                // redo) arrow, ticking where letting go acts, and only when there's something to undo (or redo). Swipe
+                // it up, keyboard down: the note shrinks back into its card under the finger (as a browser page shrinks
+                // into the tab switcher), ticking where letting go closes it. While typing, a swipe up does nothing:
+                // the keyboard is for writing. The direction is fixed once the finger passes the touch slop.
                 .panGesture(
                     enabled = !panel,
+                    onStart = { swipeUp = null; shrink = 0f },
                     onMove = { x, y ->
+                        if (swipeUp == null) swipeUp = kotlin.math.abs(y) > kotlin.math.abs(x) && y < 0
+                        if (swipeUp == true) {
+                            if (keyboardNow) return@panGesture
+                            val p = (-y / SHRINK_DRAG).coerceIn(0f, 1f)
+                            if ((p > SHRINK_AT) != (shrink > SHRINK_AT)) haptics?.tick()
+                            shrink = p
+                            onShrink(y)
+                            return@panGesture
+                        }
                         if (kotlin.math.abs(x) < kotlin.math.abs(y)) return@panGesture
-                        val was = kotlin.math.abs(dx.value) > screenW * 0.1f
-                        scope.launch { dx.snapTo(x * 0.5f) }
-                        if ((kotlin.math.abs(x * 0.5f) > screenW * 0.1f) != was) haptics?.tick()
+                        scope.launch { dx.snapTo(x) }
+                        val armed = (if (x > 0) editor.canUndo else editor.canRedo) && kotlin.math.abs(x) > PILL_SWIPE_ARM
+                        if (armed != swipeArmed) { swipeArmed = armed; haptics?.tick() }
                     },
-                    onRelease = { x, _, vx, _ ->
-                        if (kotlin.math.abs(x) > screenW * 0.2f || (kotlin.math.abs(vx) > 0.7f && kotlin.math.abs(x) > 24f)) onBack()
-                        scope.launch { dx.animateTo(0f, Motion.springBack()) }
+                    onRelease = { x, y, vx, vy ->
+                        if (swipeUp == true) {
+                            // where it let go (not the last move seen); a flick up closes it too, a flick down keeps it
+                            val p = (-y / SHRINK_DRAG).coerceIn(0f, 1f)
+                            if (shrink > 0f || !keyboardNow) onShrinkRelease(vy < -0.2f || (vy < 0.2f && p > SHRINK_AT))
+                        } else {
+                            swipeArmed = false
+                            scope.launch { dx.animateTo(0f, Motion.spatial()) }
+                            if (kotlin.math.abs(x) > kotlin.math.abs(y) && pillSwipeActs(x, vx)) {
+                                if (x > 0 && editor.canUndo) editor.undo() else if (x < 0 && editor.canRedo) editor.redo()
+                            }
+                        }
+                        swipeUp = null
                     },
                 )
+                // screen readers can't swipe: the Pill's swipes, as actions on it
+                .semantics {
+                    customActions = listOf(
+                        CustomAccessibilityAction("Undo") { editor.canUndo.also { if (it) editor.undo() } },
+                        CustomAccessibilityAction("Redo") { editor.canRedo.also { if (it) editor.redo() } },
+                    )
+                }
                 .padding(horizontal = 10.dp),
         ) {
-            AnimatedVisibility(
-                panel,
-                enter = expandVertically(Motion.enter(250), expandFrom = Alignment.Bottom) + fadeIn(Motion.enter(200)),
-                exit = shrinkVertically(Motion.exit(150), shrinkTowards = Alignment.Bottom) + fadeOut(Motion.exit(100)),
-            ) { FormatPanel(editor, tick) }
-            Row(Modifier.fillMaxWidth().height(70.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
+            Box { Row(Modifier.fillMaxWidth().height(70.dp).graphicsLayer { alpha = pillSwipeContentAlpha(dx.value, editor.canUndo, editor.canRedo) }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
                 Tool("text_format", "Text format", on = panel) {
-                    if (panel) { setPanel(false); editor.requestFocus(); ctx.getSystemService(InputMethodManager::class.java).showSoftInput(editor, 0) }
-                    else { hideKeyboard(); setPanel(true) }
+                    // opening: the selection is kept for the panel's controls, and the keyboard goes until it closes
+                    if (panel) setPanel(false) else { insert = false; editor.holdSelection = true; editor.requestFocus(); editor.hideSelectionMenu(); hideKeyboard(); setPanel(true) }
                 }
                 val para = editor.listAt()
+                // undo and redo are the Pill's sideways swipes, so their place here goes to bold and numbered lists
+                val bold = (editor.inline(Inline.WEIGHT) as? Int ?: 400) >= 600
+                Tool("format_bold", "Bold", on = bold) { editor.setInline(Inline.WEIGHT, if (bold) 400 else 700) }
                 Tool("checklist", "Checklist", on = para?.kind == ListKind.CHECK) { editor.list(ListKind.CHECK) }
                 Tool("format_list_bulleted", "Bulleted list", on = para?.kind == ListKind.BULLET) { editor.list(ListKind.BULLET) }
-                Tool("add_photo_alternate", "Add picture") { pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
-                Tool("undo", "Undo", enabled = editor.canUndo) { editor.undo() }
-                Tool("redo", "Redo", enabled = editor.canRedo) { editor.redo() }
+                Tool("format_list_numbered", "Numbered list", on = para?.kind == ListKind.NUMBER) { editor.list(ListKind.NUMBER) }
+                Tool("add", "Insert") { setPanel(false); insert = true }
             }
+            PillSwipeArrows({ dx.value }, right = if (editor.canUndo) "undo" else null, left = if (editor.canRedo) "redo" else null, Modifier.matchParentSize()) }
         }
     }
 }
@@ -128,100 +179,41 @@ private fun Tool(icon: String, label: String, on: Boolean = false, enabled: Bool
     val bg by androidx.compose.animation.animateColorAsState(if (on) ui.cs.primaryContainer else Color.Transparent, label = "tool")
     val pop = popScale(on)
     Box(
-        Modifier.size(48.dp).pressScale(press).graphicsLayer { scaleX = pop; scaleY = pop }.clip(CircleShape).background(bg)
+        Modifier.size(52.dp).pressScale(press).graphicsLayer { scaleX = pop; scaleY = pop }.clip(CircleShape).background(bg)
             .alpha(if (enabled) 1f else 0.38f).touchable(enabled, press, onClick),
         contentAlignment = Alignment.Center,
-    ) { Sym(icon, 24f, if (on) ui.cs.onPrimaryContainer else ui.cs.onSurface, label = label) }
+    ) { Sym(icon, 28f, if (on) ui.cs.onPrimaryContainer else ui.cs.onSurface, label = label) }
 }
 
-/** The full text format panel: style, the four classic toggles, weight, size, font, colour, highlight, paragraph. */
-@Composable
-private fun FormatPanel(e: NoteEditText, tick: Int) {
-    tick // re-read the editor's state whenever it changes
-    Column(Modifier.fillMaxWidth().heightIn(max = 380.dp).verticalScroll(rememberScrollState()).padding(top = 16.dp, bottom = 4.dp, start = 4.dp, end = 4.dp)) {
-        val size = e.inline(Inline.SIZE); val weight = e.inline(Inline.WEIGHT)
-        ConnectedChoice(TextStyle.entries.map { it.name to it.label }, TextStyle.of(size, weight)?.name ?: "") { e.style(TextStyle.valueOf(it)) }
+/** dp of upward drag that shrinks the note all the way into its card (the browser's page into the tab switcher). */
+private const val SHRINK_DRAG = 220f
+/** How far (0..1) a swipe up has to go for letting go to close the note. */
+private const val SHRINK_AT = 0.12f
 
-        Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            val bold = (weight as? Int ?: 400) >= 600
-            Toggle("format_bold", "Bold", bold) { e.setInline(Inline.WEIGHT, if (bold) 400 else 700) }
-            Toggle("format_italic", "Italic", e.inline(Inline.ITALIC) == true) { e.setInline(Inline.ITALIC, e.inline(Inline.ITALIC) != true) }
-            Toggle("format_underlined", "Underline", e.inline(Inline.UNDERLINE) == true) { e.setInline(Inline.UNDERLINE, e.inline(Inline.UNDERLINE) != true) }
-            Toggle("format_strikethrough", "Strikethrough", e.inline(Inline.STRIKE) == true) { e.setInline(Inline.STRIKE, e.inline(Inline.STRIKE) != true) }
-            Toggle("format_clear", "Clear formatting", false) { e.clearFormatting() }
-        }
+// ---- Swiping a Pill sideways (mi. Browser's back/forward). The Pill itself never moves: as the finger goes, its
+// contents fade out and an arrow fades in on the side it's heading from (in by 32dp), it ticks once at 28dp where
+// letting go acts (and back if the finger returns), and the drag value settles on Motion.spatial(), no bounce.
 
-        Label("Weight", (weight as? Int)?.let { w -> WEIGHT_NAMES[(w / 100 * 100).coerceIn(100, 1000)] } ?: "Mixed")
-        var w by remember(weight) { mutableFloatStateOf(((weight as? Int) ?: 400).toFloat()) }
-        Slider(w, { w = it }, valueRange = 100f..900f, steps = 7, onValueChangeFinished = { e.setInline(Inline.WEIGHT, Math.round(w / 100f) * 100) })
+/** How far (dp) a Pill swipe has to go before letting go acts. */
+private const val PILL_SWIPE_ARM = 28f
 
-        Label("Size", null)
-        ConnectedChoice(SIZES.map { it.first.toString() to it.second }, (size as? Float)?.toString() ?: "") { e.setInline(Inline.SIZE, it.toFloat()) }
+/** Whether a Pill swipe let go at [dx] (dp) with speed [vx] (dp/ms) acts: past 28dp, or 8dp with a flick. */
+internal fun pillSwipeActs(dx: Float, vx: Float) = kotlin.math.abs(dx) > PILL_SWIPE_ARM || (kotlin.math.abs(dx) > 8f && kotlin.math.abs(vx) > 0.25f)
 
-        Label("Font", null)
-        ConnectedChoice(TextFont.entries.map { it.name to it.label }, (e.inline(Inline.FONT) as? TextFont)?.name ?: "") { e.setInline(Inline.FONT, TextFont.valueOf(it)) }
+/** The Pill's contents' opacity while dragged [d] dp sideways: gone by 32dp, where there's somewhere to go that way. */
+internal fun pillSwipeContentAlpha(d: Float, canRight: Boolean, canLeft: Boolean): Float =
+    if ((d > 0f && canRight) || (d < 0f && canLeft)) 1f - (kotlin.math.abs(d) / 32f).coerceIn(0f, 1f) else 1f
 
-        Label("Color", null)
-        Swatches(TEXT_COLORS, e.inline(Inline.COLOR) as? Int, none = "format_color_text") { e.setInline(Inline.COLOR, it) }
-
-        Label("Highlight", null)
-        Swatches(HIGHLIGHTS, e.inline(Inline.HIGHLIGHT) as? Int, none = "ink_highlighter", translucent = true) { e.setInline(Inline.HIGHLIGHT, it) }
-
-        Label("Paragraph", null)
-        val para = e.listAt(); val align = e.alignment()
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Toggle("format_align_left", "Align left", align == Layout.Alignment.ALIGN_NORMAL) { e.align(Layout.Alignment.ALIGN_NORMAL) }
-            Toggle("format_align_center", "Align center", align == Layout.Alignment.ALIGN_CENTER) { e.align(Layout.Alignment.ALIGN_CENTER) }
-            Toggle("format_align_right", "Align right", align == Layout.Alignment.ALIGN_OPPOSITE) { e.align(Layout.Alignment.ALIGN_OPPOSITE) }
-            Toggle("format_indent_decrease", "Decrease indent", false, enabled = (para?.level ?: 0) > 0) { e.indentBy(-1) }
-            Toggle("format_indent_increase", "Increase indent", false, enabled = (para?.level ?: 0) < MAX_LEVEL) { e.indentBy(1) }
-        }
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            Toggle("format_list_bulleted", "Bulleted list", para?.kind == ListKind.BULLET) { e.list(ListKind.BULLET) }
-            Toggle("format_list_numbered", "Numbered list", para?.kind == ListKind.NUMBER) { e.list(ListKind.NUMBER) }
-            Toggle("checklist", "Checklist", para?.kind == ListKind.CHECK) { e.list(ListKind.CHECK) }
-            Spacer(Modifier.size(48.dp)); Spacer(Modifier.size(48.dp))
-        }
-    }
-}
-
-@Composable
-private fun Label(text: String, value: String?) {
+/** The arrows a Pill swipe shows, over the Pill ([drag] read at draw time): [right] for a swipe right, at the start. */
+@androidx.compose.runtime.Composable
+private fun PillSwipeArrows(drag: () -> Float, right: String?, left: String?, modifier: Modifier = Modifier) {
     val ui = LocalUi.current
-    Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp, start = 4.dp, end = 4.dp)) {
-        Txt(text, 12f, ui.cs.onSurfaceVariant, ui.bold, Modifier.weight(1f))
-        if (value != null) Txt(value, 12f, ui.cs.onSurfaceVariant, ui.semibold)
-    }
-}
-
-@Composable
-private fun Toggle(icon: String, label: String, on: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
-    val ui = LocalUi.current
-    val press = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-    val bg by androidx.compose.animation.animateColorAsState(if (on) ui.cs.primaryContainer else ui.pillField, label = "toggle")
-    Box(
-        Modifier.size(52.dp).pressScale(press).clip(RoundedCornerShape(if (on) 26.dp else 16.dp)).background(bg).alpha(if (enabled) 1f else 0.38f).touchable(enabled, press, onClick),
-        contentAlignment = Alignment.Center,
-    ) { Sym(icon, 24f, if (on) ui.cs.onPrimaryContainer else ui.cs.onSurface, label = label) }
-}
-
-/** A row of colour swatches; the first (0) is "none", drawn as [none]'s icon. */
-@Composable
-private fun Swatches(colors: List<Int>, value: Int?, none: String, translucent: Boolean = false, onPick: (Int) -> Unit) {
-    val ui = LocalUi.current
-    LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        items(colors) { c ->
-            val on = value == c
-            Box(
-                Modifier.size(40.dp).clip(if (on) RoundedCornerShape(30) else CircleShape)
-                    .background(if (c == 0) ui.pillField else Color(c).copy(alpha = if (translucent) 0.6f else 1f))
-                    .then(if (on) Modifier.border(2.dp, ui.cs.onSurface, RoundedCornerShape(30)) else Modifier)
-                    .touchable { onPick(c) },
-                contentAlignment = Alignment.Center,
-            ) {
-                if (c == 0) Sym(none, 20f, ui.cs.onSurfaceVariant, label = "None")
-                else if (on) Sym("check", 20f, Color.White)
-            }
-        }
+    androidx.compose.foundation.layout.Box(modifier) {
+        if (right != null) androidx.compose.foundation.layout.Box(
+            Modifier.align(androidx.compose.ui.Alignment.CenterStart).padding(start = 20.dp).graphicsLayer { alpha = (drag() / 32f).coerceIn(0f, 1f) },
+        ) { Sym(right, 28f, ui.cs.onSurface) }
+        if (left != null) androidx.compose.foundation.layout.Box(
+            Modifier.align(androidx.compose.ui.Alignment.CenterEnd).padding(end = 20.dp).graphicsLayer { alpha = (-drag() / 32f).coerceIn(0f, 1f) },
+        ) { Sym(left, 28f, ui.cs.onSurface) }
     }
 }

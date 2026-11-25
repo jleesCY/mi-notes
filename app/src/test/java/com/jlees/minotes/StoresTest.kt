@@ -54,4 +54,42 @@ class StoresTest {
         assertEquals("mine", s[mine.id]?.title)
         assertEquals(2, s.notes.size)
     }
+
+    @Test fun shorteningKeepDeletedLetsOldNotesGo() {
+        val s = store()
+        val old = s.create(null); val recent = s.create(null)
+        s.delete(old.id); s.delete(recent.id)
+        val now = System.currentTimeMillis()
+        s.put(s[old.id]!!.copy(deletedAt = now - 10 * 86_400_000L))
+        s.purge(keepDays = 7, now = now)
+        assertNull(s[old.id])
+        assertEquals(recent.id, s[recent.id]?.id)
+    }
+
+    @Test fun anUnreadableFileIsKeptAsideNotOverwritten() {
+        val dir = Files.createTempDirectory("notes").toFile()
+        java.io.File(dir, "notes.json").writeText("[{ this isn't notes")
+        val js = JsonStore(dir)
+        val s = NotesStore(js)
+        s.load()
+        assertEquals(emptyList<Any>(), s.notes)
+        assertEquals(true, js.keptAside)
+        assertEquals(false, java.io.File(dir, "notes.json").exists()) // the next save can't write over it
+        assertEquals("[{ this isn't notes", dir.listFiles()!!.single { it.name.startsWith("notes.json.broken-") }.readText())
+    }
+
+    @Test fun savingOnLeavingWritesOnlyWhatChanged() {
+        var state = listOf("a"); var writes = 0
+        val saver = com.jlees.minotes.data.Saver(1000, { state }) { writes++ }
+        saver.writeNow(); assertEquals(1, writes)
+        saver.writeNow(); assertEquals(1, writes) // unchanged since: nothing written
+        state = listOf("a", "b")
+        saver.writeNow(); assertEquals(2, writes)
+    }
+
+    @Test fun titlesBecomeSafeFileNames() {
+        assertEquals("a-b- c", com.jlees.minotes.data.DataTransfer.safeName("a/b: c"))
+        assertEquals("Untitled", com.jlees.minotes.data.DataTransfer.safeName("  "))
+        assertEquals(60, com.jlees.minotes.data.DataTransfer.safeName("x".repeat(100)).length)
+    }
 }

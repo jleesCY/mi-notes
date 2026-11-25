@@ -39,11 +39,14 @@ fun SettingsView(vm: NotesViewModel) {
     val list = rememberLazyListState()
     LaunchedEffect(search) { list.scrollToItem(0) }
 
-    val groups = listOf(lookAndFeelSection(vm), notesSection(vm), gesturesSection(vm), backupSection(vm), aboutSection(vm))
-    // the main page's headings, each over its own block of sections (by id): a new section is added to one here
+    val groups = listOf(notesSection(vm), lookAndFeelSection(vm), gesturesSection(vm), trashSection(vm), backupSection(vm), aboutSection(vm))
+    // the main page's headings, each over its own block of sections (by id): a new section is added to one here. The
+    // family's order: Appearance, Navigation, Saved, General (housekeeping last). Notes (how the home page's notes look,
+    // mostly) sits under Appearance after Look & Feel, as the browser's Home Page does
     val headings = listOf(
-        "Appearance" to listOf("look"),
-        "Notes" to listOf("notes", "gestures"),
+        "Appearance" to listOf("look", "notes"),
+        "Navigation" to listOf("gestures"),
+        "Saved" to listOf("trash"),
         "General" to listOf("data", "about"),
     ).map { (title, ids) -> title to ids.mapNotNull { id -> groups.firstOrNull { it.id == id } } }.filter { it.second.isNotEmpty() }
 
@@ -64,7 +67,7 @@ fun SettingsView(vm: NotesViewModel) {
     fun Page(pageId: String?) {
         val page = groups.firstOrNull { it.id == pageId }
         if (page == null) TopBarOver(sheetBg, bar = {}) { top ->
-            LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top, bottom = SheetPillSpace)) {
+            LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top, bottom = sheetPillSpace())) {
                 if (q.isEmpty()) {
                     headings.forEach { (title, sections) ->
                         item(key = "g:$title") { SectionHeader(null, title) }
@@ -73,7 +76,7 @@ fun SettingsView(vm: NotesViewModel) {
                         }
                     }
                 } else {
-                    if (visible.isEmpty()) item(key = "empty") { EmptyState("search", "No Matches", top = 60.dp) }
+                    if (visible.isEmpty()) item(key = "empty") { EmptyState("search", "No settings match \"$search\"", top = 60.dp) }
                     visible.forEach { (g, hits) ->
                         item(key = "h:${g.id}") { SectionHeader(g.icon, g.title) }
                         itemsIndexed(hits, key = { _, p -> "${g.id}:${p.heading}:${p.row.label}" }) { i, p ->
@@ -107,7 +110,7 @@ fun SettingsView(vm: NotesViewModel) {
                 flash.animateTo(1f, tween(250)); flash.animateTo(0f, tween(900, delayMillis = 400))
                 found = null
             }
-            LazyColumn(Modifier.fillMaxSize(), state = pageList, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top, bottom = SheetPillSpace)) {
+            LazyColumn(Modifier.fillMaxSize(), state = pageList, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top, bottom = sheetPillSpace())) {
                 itemsIndexed(placed, key = { _, p -> "${page.id}:${p.heading}:${p.row.label}" }) { i, p ->
                     if (p.row.header) SectionHeader(null, p.row.label)
                     else Box(Modifier.segment(p.index, p.count).then(

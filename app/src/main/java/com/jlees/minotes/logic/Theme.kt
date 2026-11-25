@@ -18,7 +18,4 @@ val ACCENTS = listOf(
 )
 
 /** "#RRGGBB" → ARGB long, mi. Notes' yellow when invalid. */
-fun hexColor(hex: String?): Long {
-    val h = hex?.removePrefix("#") ?: return 0xFFFFCC00
-    return h.toLongOrNull(16)?.takeIf { h.length == 6 }?.let { 0xFF000000 or it } ?: 0xFFFFCC00
-}
+fun hexColor(hex: String?): Long = hex?.removePrefix("#")?.takeIf { it.length == 6 }?.toLongOrNull(16)?.let { 0xFF000000 or it } ?: 0xFFFFCC00

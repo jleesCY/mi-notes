@@ -19,20 +19,31 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.util.UUID
 
-fun backupSection(vm: NotesViewModel) = SettingsSection("data", "Backup", "save", "Export, import, reset", listOf(
+fun backupSection(vm: NotesViewModel) = SettingsSection("data", "Backup & Reset", "save", "Export, import, reset", listOf(
     SettingsHeading("Backup"),
-    SettingsRow("Back Up Everything", "export backup save file minotes") { BackupItem(vm) },
-    SettingsRow("Restore a Backup", "import restore load file minotes") { RestoreItem(vm) },
+    SettingsRow("Export Settings", "export backup save file notes pictures") { BackupItem(vm) },
+    SettingsRow("Import Settings", "import restore load backup file") { RestoreItem(vm) },
     SettingsHeading("Markdown"),
     SettingsRow("Export as Markdown", "export markdown md files zip obsidian") { MarkdownExportItem(vm) },
     SettingsRow("Import Notes", "import markdown md text txt files") { ImportNotesItem(vm) },
     SettingsHeading("Reset"),
-    SettingsRow("Reset Settings", "defaults") {
-        Item("restart_alt", "Reset Settings", "Back to the defaults; your notes stay", danger = true, onClick = {
-            vm.ask = Ask.Alert("Reset Settings?", "Every setting goes back to its default. Your notes and folders stay as they are.", "Reset", destructive = true) { vm.resetSettings() }
+    SettingsRow("Reset All Settings", "defaults reset settings") {
+        Item("restart_alt", "Reset All Settings", "Back to defaults; your notes and folders are kept", danger = true, onClick = {
+            // the default Keep Deleted Notes can be shorter than yours: then older deleted notes go, and it says so
+            val notes = vm.expiringSentence(com.jlees.minotes.data.Settings().keepDeleted) ?: "Your notes and folders stay as they are."
+            vm.ask = Ask.Alert("Are you sure?", "Every setting goes back to its default. $notes", "Reset", destructive = true) { vm.resetSettings() }
         })
     },
+    SettingsRow("Wipe All Data", "erase delete everything wipe") { WipeItem(vm) },
 ))
+
+@Composable
+private fun WipeItem(vm: NotesViewModel) {
+    val activity = LocalContext.current as android.app.Activity
+    Item("delete", "Wipe All Data", "Delete every note, folder, picture and setting", danger = true, onClick = {
+        vm.ask = Ask.Alert("Are you sure?", "Every note, folder, picture and setting will be deleted for good, and mi. Notes will start again as if just installed. This can't be undone.", "Wipe App", destructive = true) { vm.wipeAll(activity) }
+    })
+}
 
 @Composable
 private fun BackupItem(vm: NotesViewModel) {
@@ -46,7 +57,7 @@ private fun BackupItem(vm: NotesViewModel) {
             Notices.show(if (err == null) "Backed up" else "Couldn't save the backup", done = err == null)
         }
     }
-    Item("upload", "Back Up Everything", "Save your notes, folders, pictures and settings to a file", onClick = { saver.launch("mi-notes-${LocalDate.now()}.minotes") })
+    Item("upload", "Export Settings", "Save your settings and notes to a file", onClick = { saver.launch("mi-notes-${LocalDate.now()}.minotesdata") })
 }
 
 @Composable
@@ -59,12 +70,14 @@ private fun RestoreItem(vm: NotesViewModel) {
             withContext(Dispatchers.IO) { runCatching { DataTransfer.import(ctx, uri) } }
                 .onSuccess { b ->
                     val n = b.notes.size
-                    vm.ask = Ask.Alert("Restore Backup?", "This adds ${if (n == 1) "1 note" else "$n notes"} and replaces your settings. Notes you already have stay as they are.", "Restore") { vm.restore(b) }
+                    // its Keep Deleted Notes can be shorter than yours: then older deleted notes go, and it says so
+                    val gone = vm.expiringSentence(b.settings.keepDeleted, b.notes)
+                    vm.ask = Ask.Alert("Import Settings?", "This replaces your settings and adds ${if (n == 1) "1 note" else "$n notes"}. ${gone ?: "Notes you already have stay as they are."}", "Import", destructive = gone != null) { vm.restore(b) }
                 }
-                .onFailure { e -> vm.ask = Ask.Alert((e as? ImportError)?.title ?: "Couldn't Restore", (e as? ImportError)?.message ?: "This file couldn't be read.") }
+                .onFailure { e -> vm.ask = Ask.Alert((e as? ImportError)?.title ?: "Couldn't Import", (e as? ImportError)?.message ?: "This file couldn't be read.") }
         }
     }
-    Item("download", "Restore a Backup", "Add notes from a .minotes file", onClick = { opener.launch(arrayOf("*/*")) })
+    Item("download", "Import Settings", "Restore from an exported file", onClick = { opener.launch(arrayOf("*/*")) })
 }
 
 @Composable
@@ -90,15 +103,21 @@ private fun ImportNotesItem(vm: NotesViewModel) {
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         scope.launch {
             val now = System.currentTimeMillis()
+            var tooBig = 0
             val notes = withContext(Dispatchers.IO) {
                 uris.mapNotNull { uri ->
                     runCatching {
-                        val text = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() } ?: return@runCatching null
+                        val text = DataTransfer.readTextCapped(ctx, uri) ?: run { tooBig++; return@runCatching null }
                         markdownToNote(text, nameOf(ctx, uri).substringBeforeLast('.'), UUID.randomUUID().toString(), now)
                     }.getOrNull()
                 }
             }
-            if (notes.isEmpty()) Notices.show("Couldn't read those files") else vm.importNotes(notes)
+            val skipped = when (tooBig) { 0 -> ""; 1 -> "1 file was too big"; else -> "$tooBig files were too big" }
+            when {
+                notes.isNotEmpty() -> vm.importNotes(notes, skipped)
+                tooBig > 0 -> Notices.show(if (tooBig == 1) "Couldn't import: the file was too big" else "Couldn't import: the files were too big")
+                else -> Notices.show("Couldn't read those files")
+            }
         }
     }
     Item("add", "Import Notes", "Markdown or text files become notes in the folder showing", onClick = { opener.launch(arrayOf("text/*", "application/octet-stream")) })

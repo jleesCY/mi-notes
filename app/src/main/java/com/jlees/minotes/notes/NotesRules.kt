@@ -4,7 +4,7 @@ package com.jlees.minotes.notes
 
 import com.jlees.minotes.data.SortOrder
 
-/** How long Recently Deleted keeps a note before it's gone for good. */
+/** How long Recently Deleted keeps a note by default (Settings › Recently Deleted › Keep Deleted Notes). */
 const val TRASH_DAYS = 30
 private const val DAY_MS = 86_400_000L
 
@@ -30,12 +30,18 @@ fun visibleNotes(notes: List<Note>, folder: String?, query: String, sort: SortOr
 /** The notes in Recently Deleted, newest deletion first. */
 fun trashed(notes: List<Note>) = notes.filter { it.deletedAt != null }.sortedByDescending { it.deletedAt }
 
-/** [notes] without those deleted more than [TRASH_DAYS] ago. */
-fun purgeExpired(notes: List<Note>, now: Long) = notes.filter { it.deletedAt == null || now - it.deletedAt < TRASH_DAYS * DAY_MS }
+/** [notes] without those deleted more than [days] ago. */
+fun purgeExpired(notes: List<Note>, now: Long, days: Int = TRASH_DAYS) = notes.filter { it.deletedAt == null || now - it.deletedAt < days * DAY_MS }
+
+/** How many of [notes] a Keep Deleted Notes of [days] would delete for good at [now] (purgeExpired's other side). */
+fun expiredCount(notes: List<Note>, now: Long, days: Int): Int = notes.count { it.deletedAt != null && now - it.deletedAt >= days * DAY_MS }
+
+/** What deleting [n] notes past a period of [period] ("1 Week") says: "3 notes deleted more than 1 week ago". */
+fun expiredWords(n: Int, period: String) = "${if (n == 1) "1 note" else "$n notes"} deleted more than ${period.lowercase()} ago"
 
 /** Whole days left before a deleted note is gone (at least 1 while it's still there). */
-fun daysLeft(note: Note, now: Long): Int {
-    val gone = (note.deletedAt ?: return TRASH_DAYS) + TRASH_DAYS * DAY_MS
+fun daysLeft(note: Note, now: Long, days: Int = TRASH_DAYS): Int {
+    val gone = (note.deletedAt ?: return days) + days * DAY_MS
     return ((gone - now + DAY_MS - 1) / DAY_MS).toInt().coerceAtLeast(1)
 }
 
@@ -57,14 +63,14 @@ fun markedLines(rt: RichText): List<String> {
     return paragraphs(text).map { (s, e) ->
         val line = text.substring(s, e).replace(IMAGE_CHAR.toString(), "").trimEnd()
         val para = rt.spans.firstOrNull { it.type == SpanType.PARA && it.start <= s && it.end >= s }
-        val kind = para?.value?.let { v -> ListKind.entries.firstOrNull { it.name.equals(v, true) } } ?: ListKind.NONE
+        val kind = ListKind.of(para?.value)
         val level = (para?.level ?: 0).coerceIn(0, 7)
         if (kind == ListKind.NUMBER) { numbers[level]++; for (l in level + 1 until 8) numbers[l] = 0 } else numbers = IntArray(8)
         val marker = when (kind) {
             ListKind.BULLET -> "• "; ListKind.NUMBER -> "${numbers[level]}. "
             ListKind.CHECK -> if (para?.checked == true) "☑ " else "☐ "; ListKind.NONE -> ""
         }
-        if (line.isBlank() && kind == ListKind.NONE) "" else "  ".repeat(level) + marker + line.trim()
+        if (line.isBlank()) "" else "  ".repeat(level) + marker + line.trim() // an empty item is an empty line
     }
 }
 
@@ -85,15 +91,9 @@ fun paragraphs(text: String): List<Pair<Int, Int>> {
     }
 }
 
-/** The folder after (or with [forward] false, before) [current] in All, folder 1, folder 2…; null is All. Wraps round. */
-fun nextFolder(folders: List<Folder>, current: String?, forward: Boolean): String? {
-    val ids = listOf<String?>(null) + folders.map { it.id }
-    val i = ids.indexOf(current).coerceAtLeast(0)
-    return ids[(i + if (forward) 1 else -1).mod(ids.size)]
-}
-
 /** Words and characters in a note, for its info. */
-fun wordCount(text: String) = Regex("\\S+").findAll(text.replace(IMAGE_CHAR, ' ')).count()
+fun wordCount(text: String) = WORD.findAll(text.replace(IMAGE_CHAR, ' ')).count()
+private val WORD = Regex("\\S+")
 
 /** A note as plain text, for sharing and copying: its title, then its text with list markers written out. */
 fun plainText(n: Note): String {

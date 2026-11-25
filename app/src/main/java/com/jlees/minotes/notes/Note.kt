@@ -23,7 +23,7 @@ const val IMAGE_CHAR = '￼'
     @SerialName("gray") GRAY("Gray", 0xFFADB5BD),
 }
 
-/** The kinds of formatting a span can carry. Paragraph kinds ([PARA], [ALIGN]) always cover whole paragraphs. */
+/** The kinds of formatting a span can carry. Paragraph kinds ([PARA], [ALIGN], [BLOCK]) always cover whole paragraphs. */
 @Serializable enum class SpanType {
     /** Font weight, 100–1000 in [Span.value] (400 is regular, 700 bold). */
     @SerialName("weight") WEIGHT,
@@ -42,11 +42,24 @@ const val IMAGE_CHAR = '￼'
     @SerialName("para") PARA,
     /** A paragraph's alignment: "center" or "end". */
     @SerialName("align") ALIGN,
-    /** An image: its file name in the note's images (value), on one [IMAGE_CHAR]. */
+    /** An image: its file name in the note's images (value) and [Span.width], on one [IMAGE_CHAR]. */
     @SerialName("image") IMAGE,
+    /** A dividing line across the page, on one [IMAGE_CHAR] of its own line. */
+    @SerialName("divider") DIVIDER,
+    /** A paragraph set apart: "quote", "code" or "callout" (see [BlockKinds]). */
+    @SerialName("block") BLOCK,
+    /** A kind this version doesn't know (from a newer app): read as this and skipped, so the note still opens. */
+    @SerialName("unknown") UNKNOWN,
 }
 
-@Serializable enum class ListKind { @SerialName("none") NONE, @SerialName("bullet") BULLET, @SerialName("number") NUMBER, @SerialName("check") CHECK }
+/** [SpanType.BLOCK]'s values. */
+object BlockKinds { const val QUOTE = "quote"; const val CODE = "code"; const val CALLOUT = "callout" }
+
+@Serializable enum class ListKind {
+    @SerialName("none") NONE, @SerialName("bullet") BULLET, @SerialName("number") NUMBER, @SerialName("check") CHECK;
+    /** The kind a PARA span's value names ("bullet"), NONE for anything else. */
+    companion object { fun of(v: String?) = entries.firstOrNull { it.name.equals(v, true) } ?: NONE }
+}
 
 @Serializable enum class TextFont(val label: String) {
     @SerialName("sans") SANS("Sans"), @SerialName("rounded") ROUNDED("Rounded"), @SerialName("serif") SERIF("Serif"), @SerialName("mono") MONO("Mono")
@@ -56,15 +69,17 @@ const val IMAGE_CHAR = '￼'
 data class Span(
     val start: Int,
     val end: Int,
-    val type: SpanType,
+    val type: SpanType = SpanType.UNKNOWN,
     val value: String = "",
     val level: Int = 0,
     val checked: Boolean = false,
+    /** An image's width in percent of the page; 0 is the full width. */
+    val width: Int = 0,
 )
 
 @Serializable
 data class RichText(val text: String = "", val spans: List<Span> = emptyList()) {
-    /** The text without image placeholders (search, previews, sharing as text). */
+    /** The text without placeholders (pictures, dividers), for search, previews and sharing as text. */
     val plain: String get() = text.replace(IMAGE_CHAR.toString(), "")
     val images: List<String> get() = spans.filter { it.type == SpanType.IMAGE }.map { it.value }
 }

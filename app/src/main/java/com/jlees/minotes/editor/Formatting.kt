@@ -7,6 +7,7 @@ import android.text.Editable
 import android.text.Layout
 import android.text.SpannableStringBuilder
 import android.text.Spanned
+import com.jlees.minotes.notes.IMAGE_CHAR
 import com.jlees.minotes.notes.ListKind
 import com.jlees.minotes.notes.TextFont
 
@@ -16,8 +17,27 @@ enum class Inline { WEIGHT, ITALIC, UNDERLINE, STRIKE, COLOR, HIGHLIGHT, SIZE, F
 /** Typing at the end of styled text carries the style on; typing just before it doesn't. */
 const val INLINE_FLAGS = Spanned.SPAN_EXCLUSIVE_INCLUSIVE
 /** Paragraph spans take in whatever is typed anywhere in their paragraph, an empty one included. */
-const val PARA_FLAGS = Spanned.SPAN_INCLUSIVE_INCLUSIVE
+/**
+ * How a paragraph format sits: over the paragraph's text and its line break (as Android's paragraph styles do), taking
+ * in what's typed at its start but not what's typed after its line break (the next line's start). Never empty, so a
+ * keyboard typing into an empty list item can't push it off that line: it used to be an empty span on an empty line,
+ * and the on-screen keyboard carried it ahead of the text onto the editor's hidden last line, where backspace and
+ * Enter couldn't find it (the bullet stayed drawn, stuck).
+ */
+const val PARA_FLAGS = Spanned.SPAN_INCLUSIVE_EXCLUSIVE
+
+/** Where a format on the paragraph starting at [p] ends: after its line break (or at the text's end). */
+fun paraSpanEnd(t: CharSequence, p: Int): Int = minOf(paragraphEnd(t, p) + 1, t.length).coerceAtLeast(p)
+
+/** The paragraphs a paragraph format over [a, b) lies on (its characters' paragraphs; an empty one, the one it's in). */
+internal fun paragraphsUnder(t: CharSequence, a: Int, b: Int): List<Int> =
+    if (b > a) paragraphStarts(t, a, b - 1) else listOf(paragraphStart(t, a))
 const val MAX_LEVEL = 6
+
+/** Whether a note's editor text [t] is blank enough for "Start writing": no words, and no list or block (quote, code,
+ *  callout) started on its empty line either, which is writing begun and draws its own marker or tint there. */
+fun showsPlaceholder(t: Spanned): Boolean =
+    t.length <= 1 && t.getSpans(0, t.length, ParaSpan::class.java).isEmpty() && t.getSpans(0, t.length, BlockSpan::class.java).isEmpty()
 
 fun defaultOf(k: Inline): Any = when (k) {
     Inline.WEIGHT -> 400; Inline.SIZE -> 1f; Inline.COLOR, Inline.HIGHLIGHT -> 0; Inline.FONT -> TextFont.SANS
@@ -75,6 +95,14 @@ fun inlineValue(t: Spanned, s: Int, e: Int, k: Inline): Any? {
 // ---------------------------------------------------------------- paragraphs
 
 /** The starts of the paragraphs [s, e] touches. */
+/**
+ * The [cls] spans that belong to the paragraph starting at [p]. Asked over the paragraph and its line break: Android
+ * can miss a span on an empty paragraph asked about the empty range alone (Enter then never ended a list or block
+ * started on an empty line).
+ */
+fun <T> Spanned.paragraphSpans(p: Int, cls: Class<T>): List<T> =
+    getSpans(p, minOf(paragraphEnd(this, p) + 1, length), cls).filter { paragraphStart(this, getSpanStart(it)) == p }
+
 fun paragraphStarts(t: CharSequence, s: Int, e: Int): List<Int> {
     val out = ArrayList<Int>()
     var p = paragraphStart(t, s)
@@ -85,8 +113,8 @@ fun paragraphStarts(t: CharSequence, s: Int, e: Int): List<Int> {
 
 /** Sets the list format of the paragraph starting at [start]; no list and no indent removes it. */
 fun setPara(t: Editable, start: Int, kind: ListKind, level: Int, checked: Boolean = false) {
-    val end = paragraphEnd(t, start)
-    t.getSpans(start, end, ParaSpan::class.java).filter { paragraphStart(t, t.getSpanStart(it)) == start }.forEach { t.removeSpan(it) }
+    val end = paraSpanEnd(t, start)
+    t.paragraphSpans(start, ParaSpan::class.java).forEach { t.removeSpan(it) }
     if (kind != ListKind.NONE || level > 0) t.setSpan(ParaSpan(kind, level.coerceIn(0, MAX_LEVEL), checked && kind == ListKind.CHECK), start, end, PARA_FLAGS)
 }
 
@@ -111,15 +139,33 @@ fun indent(t: Editable, s: Int, e: Int, delta: Int) {
 /** Aligns the paragraphs in [s, e]; NORMAL (start) removes the alignment. */
 fun setAlign(t: Editable, s: Int, e: Int, align: Layout.Alignment) {
     for (p in paragraphStarts(t, s, e)) {
-        val end = paragraphEnd(t, p)
-        t.getSpans(p, end, AlignSpan::class.java).filter { paragraphStart(t, t.getSpanStart(it)) == p }.forEach { t.removeSpan(it) }
+        val end = paraSpanEnd(t, p)
+        t.paragraphSpans(p, AlignSpan::class.java).forEach { t.removeSpan(it) }
         if (align != Layout.Alignment.ALIGN_NORMAL) t.setSpan(AlignSpan(align), p, end, PARA_FLAGS)
     }
 }
 
+/** Makes the paragraphs in [s, e] a [kind] of block; null takes the block off. */
+fun setBlock(t: Editable, s: Int, e: Int, kind: BlockKind?) {
+    for (p in paragraphStarts(t, s, e)) {
+        val end = paraSpanEnd(t, p)
+        t.paragraphSpans(p, BlockSpan::class.java).forEach { t.removeSpan(it) }
+        if (kind != null) t.setSpan(BlockSpan(kind), p, end, PARA_FLAGS)
+    }
+}
+
+fun blockAt(t: Spanned, pos: Int): BlockKind? {
+    val p = paragraphStart(t, pos)
+    return t.paragraphSpans(p, BlockSpan::class.java).firstOrNull()?.kind
+}
+
+/** The block button: [kind] for the paragraphs in [s, e], or off when they all are one already. */
+fun toggleBlock(t: Editable, s: Int, e: Int, kind: BlockKind) =
+    setBlock(t, s, e, if (paragraphStarts(t, s, e).all { blockAt(t, it) == kind }) null else kind)
+
 fun alignAt(t: Spanned, pos: Int): Layout.Alignment {
     val p = paragraphStart(t, pos)
-    return t.getSpans(p, paragraphEnd(t, p), AlignSpan::class.java).firstOrNull { paragraphStart(t, t.getSpanStart(it)) == p }?.align ?: Layout.Alignment.ALIGN_NORMAL
+    return t.paragraphSpans(p, AlignSpan::class.java).firstOrNull()?.align ?: Layout.Alignment.ALIGN_NORMAL
 }
 
 /**
@@ -157,58 +203,88 @@ fun toggleCheck(t: Editable, start: Int, toBottom: Boolean): Int {
  * other paragraph it spread over that has no format of its own. Where two start together, the longer wins.
  */
 fun normalizeParagraphs(t: Editable) {
-    for (cls in listOf(ParaSpan::class.java, AlignSpan::class.java)) {
+    for (cls in listOf(ParaSpan::class.java, AlignSpan::class.java, BlockSpan::class.java)) {
         val all = t.getSpans(0, t.length, cls).map { Triple(it, t.getSpanStart(it), t.getSpanEnd(it)) }
             // a deleted paragraph's span is left squashed to nothing at the next one's start: the next one's own wins
             .sortedWith(compareBy({ it.second }, { -it.third }))
         if (all.isEmpty()) continue
-        all.forEach { t.removeSpan(it.first) }
         val placed = HashMap<Int, Any>()
         for ((sp, a, _) in all) { val p = paragraphStart(t, a); if (p !in placed) placed[p] = sp }
         for ((sp, a, b) in all) {
-            for (p in paragraphStarts(t, a, b)) if (p !in placed) placed[p] = when (sp) { is ParaSpan -> ParaSpan(sp.kind, sp.level); else -> AlignSpan((sp as AlignSpan).align) }
+            for (p in paragraphsUnder(t, a, b)) if (p !in placed) placed[p] = when (sp) { is ParaSpan -> ParaSpan(sp.kind, sp.level); is BlockSpan -> BlockSpan(sp.kind); else -> AlignSpan((sp as AlignSpan).align) }
         }
-        for ((p, sp) in placed) t.setSpan(sp, p, paragraphEnd(t, p), PARA_FLAGS)
-    }
-}
-
-/** Crosses out ticked checklist items' text ([faded]: their text colour). Run after every change. */
-fun refreshDone(t: Editable, faded: Int) {
-    t.getSpans(0, t.length, DoneSpan::class.java).forEach { t.removeSpan(it) }
-    for (p in t.getSpans(0, t.length, ParaSpan::class.java)) {
-        if (p.kind != ListKind.CHECK || !p.checked) continue
-        val s = t.getSpanStart(p); val e = t.getSpanEnd(p)
-        if (e > s) t.setSpan(DoneSpan(faded), s, e, Spanned.SPAN_EXCLUSIVE_INCLUSIVE)
+        // only what's out of place is touched: every span change makes Android lay that paragraph out again, and this
+        // runs on every key
+        val keep = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Any, Boolean>()).apply { addAll(placed.values) }
+        for ((sp, _, _) in all) if (sp !in keep) t.removeSpan(sp)
+        for ((p, sp) in placed) {
+            val e = paraSpanEnd(t, p)
+            if (t.getSpanStart(sp) != p || t.getSpanEnd(sp) != e || t.getSpanFlags(sp) != PARA_FLAGS) t.setSpan(sp, p, e, PARA_FLAGS)
+        }
     }
 }
 
 /**
- * Enter in an empty list item ends the list there, as in any notes app: [nl] is where a newline was just typed. When
+ * Text typed in [a, b) right beside a table or divider gets a line of its own, so the object stays alone on its line
+ * (a full-width object wraps under the text and only looks separate; saved and exported, they'd share a line).
+ * Returns where the typed text ends now, for the cursor.
+ */
+fun separateFromObjects(t: Editable, a: Int, b: Int): Int {
+    var end = b
+    if (end < t.length && t[end] == IMAGE_CHAR && end > 0 && t[end - 1] != '\n') t.insert(end, "\n")
+    if (a > 0 && a < t.length && t[a - 1] == IMAGE_CHAR && t[a] != '\n') { t.insert(a, "\n"); end++ }
+    return end
+}
+
+/** Crosses out ticked checklist items' text ([faded]: their text colour). Run after every change. */
+fun refreshDone(t: Editable, faded: Int) {
+    val want = HashSet<Pair<Int, Int>>()
+    for (p in t.getSpans(0, t.length, ParaSpan::class.java)) {
+        if (p.kind != ListKind.CHECK || !p.checked) continue
+        val s = t.getSpanStart(p); val e = t.getSpanEnd(p).let { if (it > s && t[it - 1] == '\n') it - 1 else it }
+        if (e > s) want += s to e // the item's text, not its line break
+    }
+    // the ones already right stay (see normalizeParagraphs: each change is a layout)
+    for (d in t.getSpans(0, t.length, DoneSpan::class.java)) {
+        if (d.faded != faded || !want.remove(t.getSpanStart(d) to t.getSpanEnd(d))) t.removeSpan(d)
+    }
+    for ((s, e) in want) t.setSpan(DoneSpan(faded), s, e, Spanned.SPAN_EXCLUSIVE_INCLUSIVE)
+}
+
+/**
+ * Enter in an empty list item (or quote, code or callout line) ends the list (or block) there, as in any notes app: [nl] is where a newline was just typed. When
  * the item is empty on both sides of it, the newline comes out again and the item becomes a plain paragraph.
  */
 fun endListOnEmptyEnter(t: Editable, nl: Int): Boolean {
     if (nl !in 0 until t.length || t[nl] != '\n') return false
     val s = paragraphStart(t, nl)
-    val p = paraAt(t, s) ?: return false
-    val afterEnd = paragraphEnd(t, nl + 1)
-    if (p.kind == ListKind.NONE || s != nl || afterEnd != nl + 1) return false
+    if (s != nl || paragraphEnd(t, nl + 1) != nl + 1) return false
+    // the empty line's list or block can be on it, or (Android moves an empty span along with the text typed at it) on
+    // the new line the Enter just made: either way it's the one being ended
+    val p = (paraAt(t, s) ?: paraAt(t, nl + 1))?.takeIf { it.kind != ListKind.NONE }
+    if (p == null && blockAt(t, s) == null && blockAt(t, nl + 1) == null) return false
     t.delete(nl, nl + 1)
     normalizeParagraphs(t)
-    // an indented item steps out a level first; at the outside, the list ends
-    if (p.level > 0) setPara(t, s, p.kind, p.level - 1) else setPara(t, s, ListKind.NONE, 0)
+    // an indented item steps out a level first; at the outside, the list ends; then (a list in a quote) the block
+    when {
+        p == null -> setBlock(t, s, s, null)
+        p.level > 0 -> setPara(t, s, p.kind, p.level - 1)
+        else -> setPara(t, s, ListKind.NONE, 0)
+    }
     return true
 }
 
 /**
- * Backspace at the very start of a list item or indented paragraph takes its marker off (then its indent) instead of
+ * Backspace at the very start of a list item, indented paragraph or block line takes its marker off (then its indent, then the block) instead of
  * joining it to the line above. Returns false when there's nothing to take off and the backspace should go ahead.
  */
 fun backspaceAtParagraphStart(t: Editable, cursor: Int): Boolean {
     if (paragraphStart(t, cursor) != cursor) return false
-    val p = paraAt(t, cursor) ?: return false
+    val p = paraAt(t, cursor)
     when {
-        p.kind != ListKind.NONE -> setPara(t, cursor, ListKind.NONE, p.level)
-        p.level > 0 -> setPara(t, cursor, ListKind.NONE, p.level - 1)
+        p != null && p.kind != ListKind.NONE -> setPara(t, cursor, ListKind.NONE, p.level)
+        p != null && p.level > 0 -> setPara(t, cursor, ListKind.NONE, p.level - 1)
+        blockAt(t, cursor) != null -> setBlock(t, cursor, cursor, null) // then a quote, code or callout line
         else -> return false
     }
     return true

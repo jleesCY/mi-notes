@@ -1,8 +1,9 @@
 // Shared UI primitives: Material 3 Expressive theme glue (color roles, Google Sans Flex, Material Symbols, motion).
 package com.jlees.minotes.ui.common
 
-import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.CompositionLocalProvider
+
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.foundation.background
 
 import androidx.compose.ui.Alignment
@@ -102,7 +103,7 @@ object Motion {
     fun <T> fastSpatial(): FiniteAnimationSpec<T> = spring(dampingRatio = 0.6f, stiffness = 800f) // pill swap, sheet open
     fun <T> spatial(): FiniteAnimationSpec<T> = spring(dampingRatio = 0.8f, stiffness = 380f)     // settles, resets
     fun <T> noBounce(): FiniteAnimationSpec<T> = spring(dampingRatio = 1f, stiffness = 600f)      // settles without overshoot (the Pill growing, the switcher's search)
-    fun <T> playful(): FiniteAnimationSpec<T> = spring(dampingRatio = 0.5f, stiffness = 300f)     // fidget logo
+    fun <T> playful(): FiniteAnimationSpec<T> = spring(dampingRatio = 0.5f, stiffness = 300f)     // toys (a fidget logo)
     fun <T> springBack(): FiniteAnimationSpec<T> = spring(dampingRatio = 0.45f, stiffness = 500f) // the Pill settling after a drag
 
     /** Something arriving (a panel, a dialog): fast at first, settling gently into place (Material's emphasized decelerate). */
@@ -142,8 +143,8 @@ val LocalUi = staticCompositionLocalOf { UiConfig() }
 val LocalPan = compositionLocalOf { false }
 
 /**
- * Whether a list's rows pan (Bookmarks, Downloads, Following, History each have their own switch). The page around a
- * list (its menus, pop-ups, settings) pans as Settings does ([LocalPan]); only its rows ([ListRowPan]) use this.
+ * Whether a list's rows pan (each list has its own switch under Pan Overflowed Text). The page around a list (its
+ * menus, pop-ups) pans as Settings does ([LocalPan]); only its rows ([ListRowPan]) use this.
  */
 val LocalListPan = compositionLocalOf { false }
 
@@ -172,10 +173,7 @@ fun Txt(
     align: TextAlign? = null,
     scaled: Boolean = true,
     lineHeight: Float? = null,
-    letterSpacing: Float? = null,
     underline: Boolean = false,
-    /** Crossed out (an old price). */
-    strike: Boolean = false,
     font: FontFamily? = null,
     /** False: never pans, even where panning is on (web addresses: the site is what matters, so "…" is fine). */
     pan: Boolean = true,
@@ -192,8 +190,7 @@ fun Txt(
             color = color, fontSize = fs.sp, fontFamily = font ?: LocalUi.current.font, fontWeight = weight,
             textAlign = align ?: TextAlign.Unspecified,
             lineHeight = lineHeight?.sp ?: TextUnit.Unspecified,
-            letterSpacing = letterSpacing?.sp ?: TextUnit.Unspecified,
-            textDecoration = when { underline -> TextDecoration.Underline; strike -> TextDecoration.LineThrough; else -> null },
+            textDecoration = if (underline) TextDecoration.Underline else null,
         ),
     )
 }

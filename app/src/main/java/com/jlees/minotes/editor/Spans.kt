@@ -80,11 +80,23 @@ class StrikeSpan : StrikethroughSpan()
 /** A paragraph's alignment (centre or end; start is the absence of one). */
 class AlignSpan(val align: Layout.Alignment) : AlignmentSpan { override fun getAlignment() = align }
 
-/** A picture in the note, on its one [com.jlees.minotes.notes.IMAGE_CHAR]. [name] is its file in the note's images. */
-class NoteImageSpan(val name: String, d: Drawable) : ImageSpan(d, ALIGN_BOTTOM)
+/**
+ * A picture in the note, on its one [com.jlees.minotes.notes.IMAGE_CHAR]. [name] is its file in the note's images;
+ * [width] its width in percent of the page (0: the full width).
+ */
+class NoteImageSpan(val name: String, val width: Int, d: Drawable) : ImageSpan(d, ALIGN_BOTTOM) {
+    /** Where it was last drawn, in the text layout's coordinates (the resize frame is drawn on exactly this). */
+    var drawnX = 0f; private set
+    var drawnTop = 0f; private set
+
+    override fun draw(canvas: Canvas, text: CharSequence?, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
+        drawnX = x; drawnTop = (bottom - drawable.bounds.bottom).toFloat() // as ImageSpan places an ALIGN_BOTTOM picture
+        super.draw(canvas, text, start, end, x, top, y, bottom, paint)
+    }
+}
 
 /** Crossed out and faded: a ticked checklist item's text. Not saved: it follows the item's [ParaSpan.checked]. */
-class DoneSpan(private val faded: Int) : CharacterStyle(), UpdateAppearance {
+class DoneSpan(val faded: Int) : CharacterStyle(), UpdateAppearance {
     override fun updateDrawState(tp: TextPaint) { tp.isStrikeThruText = true; tp.color = faded }
 }
 
@@ -162,8 +174,7 @@ internal fun paragraphEnd(text: CharSequence, pos: Int): Int {
 
 /** The [ParaSpan] of the paragraph starting at [start], if any. */
 internal fun paraAt(text: Spanned, start: Int): ParaSpan? {
-    val end = paragraphEnd(text, start)
-    return text.getSpans(start, end, ParaSpan::class.java).firstOrNull { text.getSpanStart(it) <= start && text.getSpanEnd(it) >= minOf(end, start) && paragraphStart(text, text.getSpanStart(it)) == start }
+    return text.paragraphSpans(start, ParaSpan::class.java).firstOrNull { text.getSpanStart(it) <= start }
 }
 
 /**
@@ -181,4 +192,52 @@ internal fun numberAt(text: Spanned, start: Int, level: Int): Int {
         n++
     }
     return n
+}
+
+/** What [BlockSpan] can make of a paragraph; [id] is how it's saved. */
+enum class BlockKind(val id: String) {
+    QUOTE(com.jlees.minotes.notes.BlockKinds.QUOTE), CODE(com.jlees.minotes.notes.BlockKinds.CODE), CALLOUT(com.jlees.minotes.notes.BlockKinds.CALLOUT)
+}
+
+/**
+ * A paragraph set apart: a quote (an accent bar at its side), a code block (monospace, on a faint tint) or a callout
+ * (an accent-tinted box with the bar). One per paragraph, as with lists; neighbouring lines of one kind meet as one block.
+ */
+class BlockSpan(val kind: BlockKind) : MetricAffectingSpan(), LeadingMarginSpan {
+    override fun updateMeasureState(tp: TextPaint) { if (kind == BlockKind.CODE) { tp.typeface = Typeface.MONOSPACE; tp.textSize *= 0.9f } }
+    override fun updateDrawState(tp: TextPaint) = updateMeasureState(tp)
+    override fun getLeadingMargin(first: Boolean) = (16 * ParaSpan.Look.density).toInt()
+
+    // the tint and the bar are drawn with the margin, which Android draws on every line, an empty one too (a line
+    // background isn't drawn for an empty line, so a new line in a block would show bare)
+    override fun drawLeadingMargin(c: Canvas, p: Paint, x: Int, dir: Int, top: Int, baseline: Int, bottom: Int, text: CharSequence, start: Int, end: Int, first: Boolean, layout: Layout?) {
+        val saved = p.color; val style = p.style
+        p.style = Paint.Style.FILL
+        if (kind != BlockKind.QUOTE) {
+            p.color = if (kind == BlockKind.CODE) (ParaSpan.Look.ink and 0xFFFFFF) or 0x14000000 else (ParaSpan.Look.accent and 0xFFFFFF) or 0x24000000
+            val far = if (dir > 0) (layout?.width ?: c.width).toFloat() else 0f
+            c.drawRect(minOf(x.toFloat(), far), top.toFloat(), maxOf(x.toFloat(), far), bottom.toFloat(), p)
+        }
+        if (kind != BlockKind.CODE) {
+            p.color = ParaSpan.Look.accent
+            val w = 3 * ParaSpan.Look.density
+            c.drawRect(minOf(x.toFloat(), x + dir * w), top.toFloat(), maxOf(x.toFloat(), x + dir * w), bottom.toFloat(), p)
+        }
+        p.color = saved; p.style = style
+    }
+}
+
+/** A dividing line across the page, on its one placeholder character. */
+class DividerSpan(private val pageWidth: () -> Int) : android.text.style.ReplacementSpan() {
+    override fun getSize(paint: Paint, text: CharSequence?, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int {
+        val h = (paint.textSize * 1.2f).toInt()
+        if (fm != null) { fm.ascent = -h; fm.top = -h; fm.descent = 0; fm.bottom = 0 }
+        return pageWidth()
+    }
+    override fun draw(canvas: Canvas, text: CharSequence?, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
+        val d = ParaSpan.Look.density
+        val mid = y - paint.textSize * 0.6f
+        val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = (ParaSpan.Look.ink and 0x00FFFFFF) or 0x80000000.toInt(); strokeWidth = 1.5f * d }
+        canvas.drawLine(x, mid, x + pageWidth(), mid, line)
+    }
 }

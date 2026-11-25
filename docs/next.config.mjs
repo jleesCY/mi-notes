@@ -1,18 +1,12 @@
 /** @type {import('next').NextConfig} */
 const isProd = process.env.NODE_ENV === "production";
-const repoName = process.env.GITHUB_REPOSITORY
-  ? process.env.GITHUB_REPOSITORY.split("/")[1]
-  : "mi-notes";
 
 const nextConfig = {
   output: "export",
-  basePath: isProd ? `/${repoName}` : "",
+  basePath: isProd ? "/mi-notes" : "", // served from mi-app-hub.github.io/mi-notes
   trailingSlash: true,
   images: {
     unoptimized: true,
-  },
-  env: {
-    NEXT_PUBLIC_REPO_NAME: repoName,
   },
 };
 

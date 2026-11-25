@@ -38,12 +38,19 @@ android {
             versionNameSuffix = "-dev"
         }
         release {
+            // 64-bit phones only ("mi-notes-<version>-release.apk", as mi. Browser's): ML Kit's text recognizer (scan/)
+            // brings native code per CPU type, and 32-bit phones are old budget models; x86 is emulators
+            ndk { abiFilters += listOf("arm64-v8a") }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
             signingConfig = signingConfigs.findByName("release")
         }
     }
+
+    // ML Kit's native code (scan/) compressed inside the APK: about half the download. Android unpacks the
+    // phone's own copy at install, so the space it takes on the phone is about the same either way
+    packaging { jniLibs { useLegacyPackaging = true } }
 
     buildFeatures {
         compose = true
@@ -73,6 +80,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("androidx.core:core-splashscreen:1.2.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.13.0")
+    // scanning text (scan/): on-device recognition, its model bundled in the APK; its reporting is removed in the manifest
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+    // finds leaked screens and views while developing; debug builds only, nothing of it reaches a release
+    debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.17")
     testImplementation("androidx.test:core:1.7.0")

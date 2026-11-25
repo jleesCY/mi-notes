@@ -9,6 +9,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.runtime.getValue
 import kotlin.math.abs
 
 /**
@@ -61,6 +62,45 @@ fun Modifier.panGesture(
         } finally {
             // Interrupted (pointer lost, node removed/restarted, multi-touch): always settle so nothing is left half-way.
             if (claimed && !released) onRelease(total.x / dens, total.y / dens, 0f, 0f)
+        }
+    }
+}
+
+/**
+ * Holding the Pill still (anywhere on it, its buttons too) calls [onLongPress] once the long-press time passes; moving
+ * first leaves the touch to the Pill's swipes. Seen before the buttons see the touch, and the rest of a long press is
+ * kept from them, so the button under the thumb doesn't click as well. (Copied from mi-browser's SwitcherSwipes.)
+ */
+@androidx.compose.runtime.Composable
+fun Modifier.pillLongPress(enabled: Boolean, onLongPress: () -> Unit): Modifier {
+    val haptics = LocalHaptics.current
+    val action by androidx.compose.runtime.rememberUpdatedState(onLongPress)
+    return if (!enabled) this else pointerInput(Unit) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            val slop = viewConfiguration.touchSlop
+            // false: let go or moved in time (a tap or a swipe); null: still held, still, when the time ran out
+            val ended = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                while (true) {
+                    val c = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
+                    if (!c.pressed || (c.position - down.position).getDistance() > slop) break
+                }
+                false
+            }
+            if (ended != null) return@awaitEachGesture
+            // the time ran out, but the app may have been busy (a page drawing for the first time as a swipe began):
+            // moves still queued behind that arrive now. Give them a frame; a swipe after all isn't a long press
+            val late = withTimeoutOrNull(48) {
+                while (true) {
+                    val c = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: return@withTimeoutOrNull true
+                    if (!c.pressed || c.isConsumed || (c.position - down.position).getDistance() > slop) return@withTimeoutOrNull true
+                }
+                @Suppress("UNREACHABLE_CODE") false
+            }
+            if (late == true) return@awaitEachGesture
+            haptics?.longPress()
+            action()
+            do { val e = awaitPointerEvent(PointerEventPass.Initial); e.changes.forEach { it.consume() } } while (e.changes.any { it.pressed })
         }
     }
 }

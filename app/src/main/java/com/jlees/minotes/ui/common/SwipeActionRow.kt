@@ -6,7 +6,6 @@ import androidx.compose.ui.semantics.customActions
 
 import androidx.compose.ui.semantics.semantics
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animate
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -19,11 +18,11 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -49,13 +48,10 @@ import kotlin.math.roundToInt
  *   gets the answer's callback. No: the row slides back; yes: it's left for the list to remove. Without it, the row
  *   slides away and [onDelete] runs.
  * @param rowHeight the row's height, or null to fit its content (rows that grow, like a download with a progress bar)
- * @param slotHeight the row plus the gap below it; when given, it closes up after a delete (lists that
- *   position or animate their rows themselves leave it out)
  */
 @Composable
 fun SwipeActionRow(
     rowHeight: Dp?, onDelete: () -> Unit, modifier: Modifier = Modifier, onEdit: (() -> Unit)? = null,
-    slotHeight: Dp? = null,
     askDelete: ((answer: (Boolean) -> Unit) -> Unit)? = null,
     /** The right swipe's icon and screen-reader name (mi. Notes: pin). */
     editIcon: String = "edit", editLabel: String = "Edit",
@@ -64,7 +60,6 @@ fun SwipeActionRow(
     val ui = LocalUi.current
     val corner = ui.radius.dp // the Library rows' shape (libraryRowShape); a table row's red is rounded the same
     var tx by remember { mutableFloatStateOf(0f) }
-    val shrink = remember { Animatable(1f) }
     var deleting by remember { mutableStateOf(false) }
     val haptics = LocalHaptics.current
     var armed by remember { mutableStateOf(false) } // past the point where releasing acts: a tick when this changes
@@ -75,8 +70,7 @@ fun SwipeActionRow(
     fun springBack(v: Float) { settling[0] = settleScope.launch { settle(tx, v) { tx = it } } }
     val deleteBg = ui.cs.errorContainer
     val editBg = ui.cs.primaryContainer
-    val slot = if (slotHeight != null) Modifier.heightDp { slotHeight.value * shrink.value }.graphicsLayer { alpha = shrink.value } else Modifier
-    BoxWithConstraints(modifier.fillMaxWidth().then(slot)) {
+    BoxWithConstraints(modifier.fillMaxWidth()) {
         val wPx = constraints.maxWidth.toFloat()
         val reach = { abs(tx) / (wPx * 0.25f) } // 1 = far enough to act
         Box(Modifier.fillMaxWidth().then(if (rowHeight != null) Modifier.height(rowHeight) else Modifier)) {
@@ -120,8 +114,7 @@ fun SwipeActionRow(
                             }
                             tx < -wPx * 0.25f || (v < -1200f && tx < -wPx * 0.08f) -> {
                                 deleting = true
-                                val slide = launch { animate(tx, -wPx, animationSpec = Motion.exit(200)) { value, _ -> tx = value } }
-                                if (slotHeight != null) shrink.animateTo(0f, Motion.exit(200)) else slide.join()
+                                animate(tx, -wPx, animationSpec = Motion.exit(200)) { value, _ -> tx = value }
                                 onDelete()
                             }
                             onEdit != null && (tx > wPx * 0.25f || (v > 1200f && tx > wPx * 0.08f)) -> {

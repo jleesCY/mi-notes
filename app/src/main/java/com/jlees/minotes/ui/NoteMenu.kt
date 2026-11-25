@@ -2,6 +2,7 @@
 // actions as large tiles, its colour, then tools, and deleting it last.
 package com.jlees.minotes.ui
 
+import androidx.lifecycle.viewModelScope
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,6 +32,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
 import com.jlees.minotes.Ask
 import com.jlees.minotes.NotesViewModel
 import com.jlees.minotes.notes.NoteColor
@@ -46,61 +49,95 @@ import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Date
 
-/** [fromTop]: opened from the editor's ⋮ (it grows from the top right); else from a held card (it grows from the bottom). */
+/**
+ * [fromTop]: opened from the editor's ⋮ (it hangs from the top); else from a held card (it sits above the Pill).
+ * [origin]: where it grows from, in window px (the ⋮, the card); null: its own top right.
+ */
 @Composable
-fun NoteMenu(vm: NotesViewModel, fromTop: Boolean, statusDp: Float, navDp: Float) {
+fun NoteMenu(vm: NotesViewModel, fromTop: Boolean, statusDp: Float, navDp: Float, origin: androidx.compose.ui.geometry.Offset? = null) {
     val ui = LocalUi.current
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    // what's shown stays while it shrinks away
-    var shownId by remember { mutableStateOf<String?>(null) }
-    if (vm.menuFor != null) shownId = vm.menuFor
-    val visible = remember { MutableTransitionState(false) }
-    visible.targetState = vm.menuFor != null
-    if (!visible.currentState && !visible.targetState) return
-    val n = vm.notes[shownId] ?: return
-    val close = { vm.menuFor = null }
-    BackHandler(vm.menuFor != null) { close() }
+    // Export's file picker answers long after the menu has closed and stopped drawing, so its launcher is registered
+    // up here, before the early return below, and the note is looked up when the answer comes back
+    var exporting by remember { mutableStateOf<String?>(null) }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/markdown")) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
+        val n = vm.notes[exporting]
+        if (uri == null || n == null) return@rememberLauncherForActivityResult
         scope.launch {
-            val ok = withContext(Dispatchers.IO) { runCatching { ctx.contentResolver.openOutputStream(uri)?.use { it.write(noteToMarkdown(n).toByteArray()) } }.isSuccess }
+            val ok = withContext(Dispatchers.IO) { runCatching { ctx.contentResolver.openOutputStream(uri)!!.use { it.write(noteToMarkdown(n).toByteArray()) } }.isSuccess }
             Notices.show(if (ok) "Exported" else "Couldn't save the file", done = ok)
         }
     }
-
-    Box(Modifier.fillMaxSize().zIndex(300f)) {
-        AnimatedVisibility(visible, enter = fadeIn(Motion.enter(200)), exit = fadeOut(Motion.exit(150))) {
-            Box(Modifier.fillMaxSize().background(ui.cs.scrim.copy(alpha = 0.32f)).blockTouches(close))
+    // what's shown stays while it shrinks away
+    var shownId by remember { mutableStateOf<String?>(null) }
+    if (vm.menuFor != null) shownId = vm.menuFor
+    val scale = remember { androidx.compose.animation.core.Animatable(0.85f) }
+    val alpha = remember { androidx.compose.animation.core.Animatable(0f) }
+    var gone by remember { mutableStateOf(true) }
+    LaunchedEffect(vm.menuFor != null) {
+        if (vm.menuFor != null) {
+            gone = false; scale.snapTo(0.85f); alpha.snapTo(0f)
+            launch { alpha.animateTo(1f, androidx.compose.animation.core.tween(120)) }
+            scale.animateTo(1f, Motion.noBounce())
+        } else if (!gone) {
+            launch { alpha.animateTo(0f, Motion.exit(100)) }
+            scale.animateTo(0.9f, Motion.exit(120))
+            gone = true
         }
-        AnimatedVisibility(
-            visible, Modifier.align(if (fromTop) Alignment.TopEnd else Alignment.BottomCenter)
-                .padding(top = if (fromTop) (statusDp + 8).dp else 0.dp, bottom = if (fromTop) 0.dp else (navDp + 16).dp, start = 12.dp, end = 12.dp),
-            enter = scaleIn(Motion.fastSpatial(), initialScale = 0.6f, transformOrigin = if (fromTop) TransformOrigin(1f, 0f) else TransformOrigin(0.5f, 1f)) + fadeIn(Motion.enter(150)),
-            exit = scaleOut(Motion.exit(150), targetScale = 0.8f, transformOrigin = if (fromTop) TransformOrigin(1f, 0f) else TransformOrigin(0.5f, 1f)) + fadeOut(Motion.exit(120)),
-        ) {
+    }
+    if (gone && vm.menuFor == null) return
+    val n = vm.notes[shownId] ?: return
+    val close = { vm.menuFor = null }
+    BackHandler(vm.menuFor != null) { close() }
+    var panel by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+
+    // a tap outside closes it
+    Box(Modifier.fillMaxSize().zIndex(300f).blockTouches(close)
+        .padding(top = (statusDp + 16).dp, bottom = (navDp + 88).dp, start = 12.dp, end = 12.dp),
+        contentAlignment = if (fromTop) Alignment.TopCenter else Alignment.BottomCenter,
+    ) {
             Column(
-                Modifier.widthIn(max = 420.dp).fillMaxWidth().clip(RoundedCornerShape(minOf(ui.radius, 28).dp)).background(ui.cs.surfaceContainerHigh).blockTouches()
+                Modifier.widthIn(max = COMFORTABLE_WIDTH.dp).fillMaxWidth()
+                    .onGloballyPositioned { panel = it.boundsInWindow() }
+                    .graphicsLayer {
+                        // it grows from what opened it: the ⋮ or the card
+                        val r = panel
+                        transformOrigin = if (r == null || r.width == 0f || r.height == 0f || origin == null) TransformOrigin(1f, 0f)
+                            else TransformOrigin(((origin.x - r.left) / r.width).coerceIn(0f, 1f), ((origin.y - r.top) / r.height).coerceIn(0f, 1f))
+                        scaleX = scale.value; scaleY = scale.value; this.alpha = alpha.value
+                        shape = RoundedCornerShape(minOf(ui.radius, 28).dp); clip = true; shadowElevation = 10.dp.toPx()
+                    }
+                    .background(ui.cs.surfaceContainer).blockTouches()
                     .verticalScroll(rememberScrollState()).padding(16.dp),
             ) {
                 // 1. the note
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(44.dp).clip(CircleShape).background(noteCard(n.color)), contentAlignment = Alignment.Center) { Sym("sticky_note_2", 22f, ui.cs.onSurfaceVariant) }
-                    Column(Modifier.weight(1f).padding(start = 12.dp).clip(RoundedCornerShape(8.dp)).touchable { close(); vm.ask = Ask.MoveNote(n.id) }) {
-                        Txt(displayTitle(n), 16f, ui.cs.onSurface, ui.bold, maxLines = 1)
-                        Txt((vm.notes.folders.firstOrNull { it.id == n.folder }?.name ?: "No Folder") + "  ›", 13f, ui.cs.onSurfaceVariant, ui.regular, maxLines = 1)
+                Row(Modifier.padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // the note, and its folder (with › : tapping it moves the note)
+                    Row(Modifier.weight(1f).clip(RoundedCornerShape(22.dp)).touchable { close(); vm.ask = Ask.MoveNote(n.id) }, verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(44.dp).clip(CircleShape).background(noteCard(n.color)), contentAlignment = Alignment.Center) { Sym("sticky_note_2", 22f, ui.cs.onSurfaceVariant) }
+                        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                            Txt(displayTitle(n), 16f, ui.cs.onSurface, ui.bold, maxLines = 1)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Txt(vm.notes.folders.firstOrNull { it.id == n.folder }?.name ?: "No Folder", 13f, ui.cs.onSurfaceVariant, ui.regular, Modifier.weight(1f, fill = false), maxLines = 1)
+                                Sym("chevron_right", 16f, ui.cs.onSurfaceVariant)
+                            }
+                        }
                     }
-                    androidx.compose.material3.IconButton(onClick = { ShareNote.copy(ctx, n); Notices.show("Copied", done = true); close() }) { Sym("content_copy", 22f, ui.cs.onSurfaceVariant, label = "Copy text") }
+                    androidx.compose.material3.IconButton(onClick = {
+                        if (ShareNote.copy(ctx, n)) Notices.show("Copied", done = true) else Notices.show("Too long to copy. Share it as Markdown instead")
+                        close()
+                    }) { Sym("content_copy", 22f, ui.cs.onSurfaceVariant, label = "Copy text") }
                 }
                 // 2. main actions
-                Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     BigTile(if (n.pinned) "keep_off" else "keep", if (n.pinned) "Unpin" else "Pin", n.pinned) { vm.togglePin(n.id) }
-                    BigTile("share", "Share", false) { close(); ShareNote.asText(ctx, n) }
+                    BigTile("share", "Share", false) { close(); vm.viewModelScope.launch { ShareNote.asText(ctx, n) } }
                     BigTile("drive_file_move", "Move", false) { close(); vm.ask = Ask.MoveNote(n.id) }
                     BigTile("edit", "Rename", false) { close(); vm.ask = Ask.RenameNote(n.id) }
                 }
-                // 3. its colour
-                Txt("Note Color", 13f, ui.cs.onSurfaceVariant, ui.bold, Modifier.padding(top = 18.dp, bottom = 10.dp, start = 4.dp))
+                // 3. this note: its colour
+                MenuHeading("This Note")
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(NoteColor.entries) { c ->
                         val on = n.color == c
@@ -111,15 +148,15 @@ fun NoteMenu(vm: NotesViewModel, fromTop: Boolean, statusDp: Float, navDp: Float
                             contentAlignment = Alignment.Center,
                         ) {
                             if (c == NoteColor.NONE) Sym("block", 18f, ui.cs.onSurfaceVariant, label = c.label)
-                            else if (on) Sym("check", 20f, Color.Black.copy(alpha = 0.75f), label = c.label)
+                            else if (on) Sym("check", 20f, Color.White, label = c.label)
                         }
                     }
                 }
                 // 4. tools
-                Txt("Tools", 13f, ui.cs.onSurfaceVariant, ui.bold, Modifier.padding(top = 18.dp, bottom = 8.dp, start = 4.dp))
+                MenuHeading("Tools")
                 Row(Modifier.fillMaxWidth()) {
-                    Round("description", "Markdown") { close(); ShareNote.asMarkdown(ctx, n) }
-                    Round("download", "Export") { close(); export.launch(DataTransfer.safeName(displayTitle(n)) + ".md") }
+                    Round("description", "Markdown") { close(); vm.viewModelScope.launch { ShareNote.asMarkdown(ctx, n) } }
+                    Round("download", "Export") { close(); exporting = n.id; export.launch(DataTransfer.safeName(displayTitle(n)) + ".md") }
                     Round("content_copy", "Duplicate") { vm.duplicate(n.id) }
                     Round("info", "Info") {
                         close()
@@ -129,7 +166,7 @@ fun NoteMenu(vm: NotesViewModel, fromTop: Boolean, statusDp: Float, navDp: Float
                     }
                 }
                 // 5. delete, last
-                HorizontalDivider(Modifier.padding(top = 14.dp, bottom = 6.dp), color = ui.cs.outlineVariant)
+                HorizontalDivider(Modifier.padding(vertical = 8.dp), color = ui.cs.outlineVariant)
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).touchable { vm.deleteNote(n.id) }.heightIn(min = 48.dp).padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -138,8 +175,14 @@ fun NoteMenu(vm: NotesViewModel, fromTop: Boolean, statusDp: Float, navDp: Float
                     Txt("Delete Note", 15f, ui.cs.error, ui.semibold)
                 }
             }
-        }
     }
+}
+
+/** A heading inside the menu ("This Note", "Tools"). */
+@Composable
+private fun MenuHeading(text: String) {
+    val ui = LocalUi.current
+    Txt(text, 13f, ui.cs.primary, ui.bold, Modifier.padding(start = 6.dp, top = 14.dp, bottom = 8.dp))
 }
 
 @Composable

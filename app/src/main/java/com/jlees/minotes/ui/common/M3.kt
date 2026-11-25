@@ -5,7 +5,6 @@ package com.jlees.minotes.ui.common
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
@@ -14,13 +13,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ToggleButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -91,33 +85,3 @@ fun ConnectedChoice(options: List<Pair<String, String>>, value: String, modifier
         }
     }
 }
-
-/**
- * Connected icon buttons (single choice) where only the chosen one shows its name, so many choices fit one row (the
- * Library's pages). The chosen one widens to fit its name as the choice changes.
- */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-fun ConnectedIconChoice(options: List<Triple<String, String, String>>, value: String, modifier: Modifier = Modifier, onPick: (String) -> Unit) {
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) {
-        options.forEachIndexed { i, (v, label, icon) ->
-            val on = v == value
-            val weight by androidx.compose.animation.core.animateFloatAsState(if (on) 3f else 1f, Motion.enter(220), label = "choice width")
-            ToggleButton(
-                checked = on,
-                onCheckedChange = { onPick(v) },
-                modifier = Modifier.weight(weight).semantics { role = Role.RadioButton },
-                shapes = connectedShapes(i, options.lastIndex),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-            ) {
-                // the icon names its page for screen readers while the name is hidden
-                Sym(icon, 20f, androidx.compose.material3.LocalContentColor.current, label = if (on) null else label)
-                androidx.compose.animation.AnimatedVisibility(on, enter = androidx.compose.animation.expandHorizontally(Motion.enter(220)) + androidx.compose.animation.fadeIn(Motion.enter(220)),
-                    exit = androidx.compose.animation.shrinkHorizontally(Motion.exit(110)) + androidx.compose.animation.fadeOut(Motion.exit(110))) {
-                    Text(label, Modifier.padding(start = 8.dp), maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
-                }
-            }
-        }
-    }
-}
-

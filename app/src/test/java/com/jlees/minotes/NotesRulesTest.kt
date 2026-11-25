@@ -1,6 +1,8 @@
 package com.jlees.minotes
 
 import com.jlees.minotes.data.Settings
+import com.jlees.minotes.data.importedOver
+import com.jlees.minotes.data.pans
 import com.jlees.minotes.data.SortOrder
 import com.jlees.minotes.notes.*
 import org.junit.Assert.assertEquals
@@ -57,17 +59,57 @@ class NotesRulesTest {
         assertEquals("T\n\na\n\nb", plainText(note("x", "T", "a\n\nb")))
     }
 
-    @Test fun foldersWrapRound() {
-        val f = listOf(Folder("1", "One"), Folder("2", "Two"))
-        assertEquals("1", nextFolder(f, null, true))
-        assertNull(nextFolder(f, "2", true))
-        assertEquals("2", nextFolder(f, null, false))
-    }
-
     @Test fun settingsRepairDamagedValues() {
         val s = Settings(cornerRadius = 5, fontScale = 9f, previewLines = 0).sanitized()
         assertEquals(28, s.cornerRadius); assertEquals(1.2f, s.fontScale); assertEquals(2, s.previewLines)
     }
 
     @Test fun wordsAreCounted() = assertEquals(3, wordCount("one  two\n$IMAGE_CHAR three"))
+
+    @Test fun oldGridSettingLoadsAsStaggered() {
+        val s = com.jlees.minotes.data.json.decodeFromString(Settings.serializer(), """{"layout":"grid","hidePillOnScroll":true}""")
+        assertEquals(com.jlees.minotes.data.NotesLayout.STAGGERED, s.layout)
+    }
+
+    @Test fun recentlyDeletedKeepsAsLongAsTheSettingSays() {
+        val day = 86_400_000L
+        val notes = listOf(note("a", deletedAt = 0), note("b", deletedAt = 60 * day))
+        assertEquals(listOf("b"), purgeExpired(notes, 65 * day, days = 7).map { it.id })
+        assertEquals(listOf("a", "b"), purgeExpired(notes, 65 * day, days = 90).map { it.id })
+        assertEquals(85, daysLeft(notes[1], 65 * day, days = 90))
+    }
+
+    @Test fun panningIsPerPlaceAndOnlyWhenOn() {
+        val off = Settings()
+        assertEquals(false, off.pans(com.jlees.minotes.data.PanArea.SETTINGS))
+        val on = Settings(panLongText = true)
+        assertEquals(true, on.pans(com.jlees.minotes.data.PanArea.SETTINGS))
+        assertEquals(true, on.pans(com.jlees.minotes.data.PanArea.NOTE_MENU))
+        assertEquals(false, on.pans(com.jlees.minotes.data.PanArea.NOTES)) // lists start off
+    }
+
+    @Test fun aBackupKeepsWhatBelongsToThisPhone() {
+        val mine = Settings(lastFolder = "f", lastUpdateCheck = 5, lastSeenVersion = 100)
+        val theirs = Settings(lastFolder = "g", lastUpdateCheck = 9, lastSeenVersion = 90, accentColor = "#34C759")
+        val result = theirs.importedOver(mine)
+        assertEquals("#34C759", result.accentColor)
+        assertEquals(Triple("f", 5L, 100), Triple(result.lastFolder, result.lastUpdateCheck, result.lastSeenVersion))
+    }
+
+    @Test fun aShorterKeepPeriodCountsWhatItWouldDelete() {
+        val day = 86_400_000L; val now = 100 * day
+        val notes = listOf(
+            com.jlees.minotes.notes.Note("live"),
+            com.jlees.minotes.notes.Note("2 days", deletedAt = now - 2 * day),
+            com.jlees.minotes.notes.Note("20 days", deletedAt = now - 20 * day),
+            com.jlees.minotes.notes.Note("60 days", deletedAt = now - 60 * day),
+        )
+        assertEquals(2, com.jlees.minotes.notes.expiredCount(notes, now, 7))
+        assertEquals(1, com.jlees.minotes.notes.expiredCount(notes, now, 30))
+        assertEquals(0, com.jlees.minotes.notes.expiredCount(notes, now, 90))
+        // the same line purgeExpired draws: what it counts is exactly what would go
+        assertEquals(notes.size - 2, com.jlees.minotes.notes.purgeExpired(notes, now, 7).size)
+        assertEquals("1 note deleted more than 30 days ago", com.jlees.minotes.notes.expiredWords(1, "30 Days"))
+        assertEquals("2 notes deleted more than 1 week ago", com.jlees.minotes.notes.expiredWords(2, "1 Week"))
+    }
 }

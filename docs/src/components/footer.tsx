@@ -1,15 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { getAssetPath } from "@/lib/asset";
 
-const getAssetPath = (path: string) => {
-  const isProd = process.env.NODE_ENV === 'production';
-  const repoName = process.env.NEXT_PUBLIC_REPO_NAME || "mi-notes";
-  const basePath = isProd ? `/${repoName}` : "";
-  return `${basePath}${path}`;
-};
 
-const GITHUB_URL = "https://github.com/jleescy/mi-notes";
+const GITHUB_URL = "https://github.com/mi-app-hub/mi-notes";
 
 export function Footer() {
   return (

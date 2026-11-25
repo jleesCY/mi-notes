@@ -5,13 +5,8 @@ import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { Terminal, Cpu, Layout, FolderTree, Info } from "lucide-react";
 import { useHighlight } from "@/hooks/useHighlight";
+import { getAssetPath } from "@/lib/asset";
 
-const getAssetPath = (path: string) => {
-  const isProd = process.env.NODE_ENV === 'production';
-  const repoName = process.env.NEXT_PUBLIC_REPO_NAME || "mi-notes";
-  const basePath = isProd ? `/${repoName}` : "";
-  return `${basePath}${path}`;
-};
 
 const PROJECT_STRUCTURE = `
 /
@@ -158,7 +153,7 @@ export default function DeveloperDocs() {
                 <div className="space-y-6">
                   <h3 className="text-xl font-bold">Installation</h3>
                   <CodeBlock 
-                    command={`git clone https://github.com/jleescy/mi-notes.git\ncd mi-notes`}
+                    command={`git clone https://github.com/mi-app-hub/mi-notes.git\ncd mi-notes`}
                   />
                 </div>
 
@@ -195,7 +190,7 @@ export default function DeveloperDocs() {
                   <h3 className="text-xl font-bold text-on-surface">Building</h3>
                   <p className="text-sm text-on-surface-variant">Build a minified release APK with Gradle:</p>
                   <CodeBlock 
-                    command={`./gradlew assembleRelease\n# → app/build/outputs/apk/release/`}
+                    command={`./gradlew assembleRelease\n# → app/build/outputs/apk/release/mi-notes-<version>-release.apk`}
                   />
                   <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 text-xs text-primary/80">
                     <p><strong>Signing:</strong> create a <code className="bg-surface-container-highest px-1 rounded">keystore.properties</code> file in the project root (it is git-ignored) with <code className="bg-surface-container-highest px-1 rounded">storeFile</code>, <code className="bg-surface-container-highest px-1 rounded">storePassword</code>, <code className="bg-surface-container-highest px-1 rounded">keyAlias</code> and <code className="bg-surface-container-highest px-1 rounded">keyPassword</code>. Without it, the release APK is built unsigned.</p>

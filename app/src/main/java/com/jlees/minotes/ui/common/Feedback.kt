@@ -1,10 +1,11 @@
 // Small physical touches that make taps and results feel answered: a press that sinks and springs back, a pop when
-// something turns on, a shake when there's nothing to find. Short (under ~300ms) and only on moments that matter.
+// something turns on, a shake when there's nothing to find, a chevron that turns. Short (under ~300ms) and only on moments that matter.
 package com.jlees.minotes.ui.common
+
+import androidx.compose.animation.core.keyframes
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.interaction.InteractionSource

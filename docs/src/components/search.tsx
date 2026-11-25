@@ -4,6 +4,8 @@ import { Code2, FileText, Search as SearchIcon, Settings2, Shield, User, X } fro
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { highlight } from "@/hooks/useHighlight";
+import { getAssetPath } from "@/lib/asset";
 
 interface SearchResult {
   title: string;
@@ -24,6 +26,7 @@ const MOCK_DATA: SearchResult[] = [
   { title: "Lists & Blocks", type: "User Guide", href: "/user#lists", excerpt: "Enter carries a list on; Enter twice ends it. Backspace at the start takes the marker off." },
   { title: "Checklists", type: "User Guide", href: "/user#checklists", excerpt: "Tap a checkbox to tick it off; ticked items can move to the bottom." },
   { title: "Dividers, Quotes, Code and Callouts", type: "User Guide", href: "/user#blocks", excerpt: "The + in the toolbar adds a divider, quote, code block or callout." },
+  { title: "Scan Text", type: "User Guide", href: "/user#scan", excerpt: "Scan text from a photo or a picture into a note, read on your phone, with its lists and checklists." },
   { title: "Folders", type: "User Guide", href: "/user#folders", excerpt: "Folder chips across the top; hold a chip to rename or delete it." },
   { title: "Hold a Note", type: "User Guide", href: "/user#hold", excerpt: "Hold to pick it up and drag it; let go without moving for its menu." },
   { title: "Note Menu", type: "User Guide", href: "/user#note-menu", excerpt: "Pin, share, move, rename, colour, Markdown, export, duplicate and info." },
@@ -151,7 +154,7 @@ export function Search() {
 
     // Check if we're navigating to an anchor on the current page
     const [path, hash] = href.split('#');
-    const currentPath = window.location.pathname;
+    const currentPath = window.location.pathname.replace(getAssetPath(""), ""); // without the site's base path (/mi-notes)
     const normalizedPath = currentPath.endsWith('/') ? currentPath.slice(0, -1) : currentPath;
     const targetPath = path.endsWith('/') ? path.slice(0, -1) : path;
 
@@ -159,17 +162,8 @@ export function Search() {
       e.preventDefault();
       const element = document.getElementById(hash);
       if (element) {
-        // Use 'start' to ensure we see the top of the section
-        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-        // Add highlight effect
-        element.classList.remove('highlight-section');
-        // Trigger reflow
-        void element.offsetWidth;
-        element.classList.add('highlight-section');
-
-        // Update URL without jump
-        window.history.pushState(null, '', href);
+        highlight(element);
+        window.history.pushState(null, '', getAssetPath(href)); // the address, without a jump
       }
     }
   };

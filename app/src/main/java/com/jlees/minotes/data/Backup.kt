@@ -1,4 +1,4 @@
-// Backup and restore: one .minotes file, a zip holding data.json ({settings, notes, folders}) and images/ (the
+// Backup and restore: one .minotesdata file, a zip holding data.json ({settings, notes, folders}) and images/ (the
 // pictures in notes). No cloud, no account: the user puts the file wherever they like. Unknown keys are ignored, so an
 // older app reads a newer backup. Markdown export writes each note as a .md file (plus images/) in a zip.
 package com.jlees.minotes.data
@@ -43,16 +43,18 @@ object DataTransfer {
                     val e = zip.nextEntry ?: break
                     val name = e.name.substringAfterLast('/')
                     when {
-                        e.name == "data.json" -> raw = zip.readBytes()
+                        e.name == "data.json" -> raw = java.io.ByteArrayOutputStream().also { zip.copyCapped(it, MAX_DATA) }.toByteArray()
                         // only plain names: never a path that could climb out of the images folder
-                        e.name.startsWith("images/") && name.isNotEmpty() && !name.startsWith(".") && name == e.name.removePrefix("images/") ->
-                            NoteImages.file(ctx, name).outputStream().use { zip.copyTo(it) }
+                        e.name.startsWith("images/") && name.isNotEmpty() && !name.startsWith(".") && name == e.name.removePrefix("images/") -> {
+                            val f = NoteImages.file(ctx, name)
+                            runCatching { f.writeSynced { zip.copyCapped(it, MAX_PICTURE) } }.onFailure { f.delete(); throw it }
+                        }
                     }
                 }
             }
         }
-        val data = raw ?: throw ImportError("Not a Backup", "Choose a .minotes file exported from mi. Notes.")
-        val obj = runCatching { json.parseToJsonElement(String(data)).jsonObject }.getOrNull() as? JsonObject
+        val data = raw ?: throw ImportError("Not a Backup", "Choose a file exported from mi. Notes.")
+        val obj = runCatching { json.parseToJsonElement(String(data)).jsonObject }.getOrNull()
             ?: throw ImportError("Not a Backup", "This file doesn't hold mi. Notes data.")
         val b = runCatching { json.decodeFromJsonElement<Backup>(obj) }.getOrNull() ?: throw ImportError("Not a Backup", "This file doesn't hold mi. Notes data.")
         return Backup(b.settings.sanitized().migrated(), b.notes.filter { it.id.isNotBlank() }, b.folders.filter { it.id.isNotBlank() })
@@ -82,6 +84,31 @@ object DataTransfer {
             val f = NoteImages.file(ctx, img)
             if (!f.exists()) continue
             zip.putNextEntry(ZipEntry("images/$img")); f.inputStream().use { it.copyTo(zip) }; zip.closeEntry()
+        }
+    }
+
+    // a backup is a file from anywhere: what's in it is read only up to sizes no real one comes near
+    private const val MAX_DATA = 64L shl 20     // 64 MB of notes
+    private const val MAX_PICTURE = 32L shl 20  // 32 MB a picture
+    /** Import Notes: a text or Markdown file up to this becomes a note; past it, it's a log or a disk image, not a note. */
+    const val MAX_NOTE_FILE = 2L shl 20         // 2 MB
+
+    /** A picked file's text, or null when it's past [max] bytes (and so skipped, not read whole into memory). */
+    fun readTextCapped(ctx: Context, uri: Uri, max: Long = MAX_NOTE_FILE): String? {
+        val out = java.io.ByteArrayOutputStream()
+        val input = ctx.contentResolver.openInputStream(uri) ?: throw java.io.IOException("can't open $uri")
+        try { input.use { it.copyCapped(out, max) } } catch (_: ImportError) { return null }
+        return out.toByteArray().decodeToString()
+    }
+
+    /** Copies this entry to [out], stopping with "Not a Backup" past [max] bytes (a damaged or deliberately huge file). */
+    internal fun java.io.InputStream.copyCapped(out: java.io.OutputStream, max: Long) {
+        val buf = ByteArray(64 * 1024); var total = 0L
+        while (true) {
+            val n = read(buf); if (n < 0) break
+            total += n
+            if (total > max) throw ImportError("Not a Backup", "This file is too big to be an mi. Notes backup.")
+            out.write(buf, 0, n)
         }
     }
 

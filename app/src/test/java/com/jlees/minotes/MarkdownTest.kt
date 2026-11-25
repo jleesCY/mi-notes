@@ -55,4 +55,43 @@ class MarkdownTest {
     @Test fun untitledFileUsesItsName() = assertEquals("groceries", markdownToNote("milk", "groceries", "id", 1).title)
 
     @Test fun escapedMarkersStayText() = assertEquals("a*b*c", fromMarkdown("a\\*b\\*c").text)
+
+    @Test fun resizedPicturesKeepTheirWidth() {
+        assertEquals("<img src=\"images/a.jpg\" width=\"50%\">", toMarkdown(RichText("\uFFFC", listOf(Span(0, 1, SpanType.IMAGE, "a.jpg", width = 50)))))
+        assertEquals("![](images/a.jpg)", toMarkdown(RichText("\uFFFC", listOf(Span(0, 1, SpanType.IMAGE, "a.jpg")))))
+    }
+
+    @Test fun aQuoteGoesOutMarkedAndComesBack() {
+        val rt = RichText("a\nq1\nq2\nb", listOf(Span(2, 4, SpanType.BLOCK, BlockKinds.QUOTE), Span(5, 7, SpanType.BLOCK, BlockKinds.QUOTE)))
+        assertEquals("a\n> q1  \n> q2\n\nb", toMarkdown(rt)) // the blank line ends the quote, so "b" isn't read into it
+        assertEquals(rt, fromMarkdown(toMarkdown(rt)))
+    }
+
+    @Test fun aCalloutGoesOutAsAGitHubNoteAndComesBack() {
+        val rt = RichText("n1\nn2", listOf(Span(0, 2, SpanType.BLOCK, BlockKinds.CALLOUT), Span(3, 5, SpanType.BLOCK, BlockKinds.CALLOUT)))
+        assertEquals("> [!NOTE]\n> n1  \n> n2", toMarkdown(rt))
+        assertEquals(rt, fromMarkdown(toMarkdown(rt)))
+        assertEquals(BlockKinds.CALLOUT, fromMarkdown("> [!WARNING]\n> careful").spans.single { it.type == SpanType.BLOCK }.value)
+    }
+
+    @Test fun codeGoesOutFencedAndAsTyped() {
+        val rt = RichText("a\nval x = *1*\nb", listOf(Span(2, 13, SpanType.BLOCK, BlockKinds.CODE)))
+        assertEquals("a\n```\nval x = *1*\n```\nb", toMarkdown(rt))
+        assertEquals(rt, fromMarkdown(toMarkdown(rt)))
+    }
+
+    @Test fun textThatLooksLikeAQuoteOrFenceStaysText() {
+        for (t in listOf("> not a quote", "```")) assertEquals(RichText(t), fromMarkdown(toMarkdown(RichText(t))))
+    }
+
+    @Test fun aDividerGoesOutAsARuleAndComesBack() {
+        val rt = RichText("a\n\uFFFC\nb", listOf(Span(2, 3, SpanType.DIVIDER)))
+        assertEquals("a  \n\n---\n\nb", toMarkdown(rt))
+        assertEquals(rt, fromMarkdown(toMarkdown(rt)))
+    }
+
+    @Test fun aLineOfDashesTypedAsTextStaysText() {
+        val rt = RichText("---")
+        assertEquals(rt, fromMarkdown(toMarkdown(rt)))
+    }
 }

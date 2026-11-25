@@ -16,13 +16,14 @@ class NotesStore(private val store: JsonStore) {
     var folders by mutableStateOf<List<Folder>>(emptyList()); private set
 
     val savers = listOf(
-        Saver(400, { notes }) { store.write("notes", ListSerializer(Note.serializer()), it) },
+        // every note in one file: written at most every 1.5 s while typing (leaving the app writes it at once)
+        Saver(1500, { notes }) { store.write("notes", ListSerializer(Note.serializer()), it) },
         Saver(400, { folders }) { store.write("folders", ListSerializer(Folder.serializer()), it) },
     )
 
-    /** Off the main thread at start. Notes deleted past their 30 days are let go here. */
-    fun load(now: Long = System.currentTimeMillis()) {
-        notes = purgeExpired(store.read("notes", ListSerializer(Note.serializer())).orEmpty(), now)
+    /** Off the main thread at start. Notes deleted more than [keepDays] ago are let go here. */
+    fun load(now: Long = System.currentTimeMillis(), keepDays: Int = TRASH_DAYS) {
+        notes = purgeExpired(store.read("notes", ListSerializer(Note.serializer())).orEmpty(), now, keepDays)
         folders = store.read("folders", ListSerializer(Folder.serializer())).orEmpty()
     }
 
@@ -53,6 +54,9 @@ class NotesStore(private val store: JsonStore) {
     fun deleteForever(id: String): List<String> { val imgs = get(id)?.body?.images.orEmpty(); notes = notes.filterNot { it.id == id }; return imgs }
     fun emptyTrash(): List<String> { val gone = notes.filter { it.deletedAt != null }; notes = notes - gone.toSet(); return gone.flatMap { it.body.images } }
 
+    /** Lets go of notes deleted more than [keepDays] ago (Keep Deleted Notes was shortened). */
+    fun purge(keepDays: Int, now: Long = System.currentTimeMillis()) { notes = purgeExpired(notes, now, keepDays) }
+
     /** Puts a note back exactly as it was (Undo). */
     fun put(n: Note, index: Int = 0) { notes = notes.filterNot { it.id == n.id }.toMutableList().apply { add(index.coerceIn(0, size), n) } }
 
@@ -82,13 +86,9 @@ class NotesStore(private val store: JsonStore) {
         folders = folders + addedFolders.filterNot { it.id in haveF }
     }
 
-    fun replaceAll(newNotes: List<Note>, newFolders: List<Folder>) { notes = newNotes; folders = newFolders }
-
     // ---- folders
     fun addFolder(name: String): Folder { val f = Folder(UUID.randomUUID().toString(), name.trim()); folders = folders + f; return f }
     fun renameFolder(id: String, name: String) { folders = folders.map { if (it.id == id) it.copy(name = name.trim()) else it } }
-    fun setFolderColor(id: String, color: NoteColor) { folders = folders.map { if (it.id == id) it.copy(color = color) else it } }
-    fun moveFolder(from: Int, to: Int) { folders = com.jlees.minotes.logic.moved(folders, from, to) }
 
     /** Removes a folder; its notes stay, in no folder. Returns what Undo needs. */
     fun deleteFolder(id: String): Pair<Folder, Int>? {

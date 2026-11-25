@@ -17,10 +17,37 @@ fun toMarkdown(rt: RichText): String {
     val text = rt.text
     val out = StringBuilder()
     val numbers = IntArray(8)
-    paragraphs(text).forEachIndexed { pi, (s, e) ->
+    val paras = paragraphs(text)
+    paras.forEachIndexed { pi, (s, e) ->
         if (pi > 0) out.append('\n')
+        // a divider stands alone, with blank lines around it (Markdown needs them: a "---" right under a line of text
+        // would turn it into a heading)
+        val block = dividerAt(rt, s, e)
+        if (block != null) {
+            if (pi > 0 && paras[pi - 1].let { (ps, pe) -> pe > ps }) out.append('\n')
+            out.append(block)
+            if (pi < paras.lastIndex && paras[pi + 1].let { (ns, ne) -> ne > ns }) out.append('\n')
+            numbers.fill(0)
+            return@forEachIndexed
+        }
+        // a code block: its lines as typed, between fences
+        val kindHere = blockKind(rt, s)
+        val prevKind = if (pi > 0) blockKind(rt, paras[pi - 1].first) else null
+        val nextKind = if (pi < paras.lastIndex) blockKind(rt, paras[pi + 1].first) else null
+        if (kindHere == BlockKinds.CODE) {
+            if (prevKind != BlockKinds.CODE) out.append("```\n")
+            out.append(text, s, e)
+            if (nextKind != BlockKinds.CODE) out.append("\n```")
+            numbers.fill(0)
+            return@forEachIndexed
+        }
+        // a quote or callout: each line marked, a callout's first with its "[!NOTE]" line
+        when (kindHere) {
+            BlockKinds.QUOTE -> out.append("> ")
+            BlockKinds.CALLOUT -> out.append(if (prevKind == BlockKinds.CALLOUT) "> " else "> [!NOTE]\n> ")
+        }
         val para = rt.spans.firstOrNull { it.type == SpanType.PARA && it.start <= s && it.end >= s }
-        val kind = para?.value?.let { v -> ListKind.entries.firstOrNull { it.name.equals(v, true) } } ?: ListKind.NONE
+        val kind = ListKind.of(para?.value)
         val level = (para?.level ?: 0).coerceIn(0, 7)
         if (kind == ListKind.NUMBER) { numbers[level]++; for (l in level + 1 until 8) numbers[l] = 0 } else numbers.fill(0)
         // a paragraph all in one large size reads as a heading
@@ -35,14 +62,25 @@ fun toMarkdown(rt: RichText): String {
         out.append(inlineMarkdown(rt, s, e, escapeStart = kind == ListKind.NONE && heading.isEmpty(), inHeading = heading.isNotEmpty()))
         // Markdown runs lines of one paragraph together: end plain lines with a hard break, unless a blank line follows
         // (not after a heading, nor before a list item, which start lines of their own)
-        if (kind == ListKind.NONE && heading.isEmpty() && e < text.length) {
+        if (kind == ListKind.NONE && heading.isEmpty() && e < text.length && nextKind == kindHere) {
             val ns = e + 1; val ne = text.indexOf('\n', ns).let { if (it < 0) text.length else it }
             val nextIsList = rt.spans.any { it.type == SpanType.PARA && it.start <= ns && it.end >= ns && !it.value.equals("none", true) }
             if (ne > ns && !nextIsList) out.append("  ")
         }
+        // a quote or callout ends at a blank line (without one, the next line would be read as part of it)
+        if (kindHere != null && nextKind != kindHere && pi < paras.lastIndex) out.append('\n')
     }
     return out.toString()
 }
+
+/** The paragraph [s]..[e] as a Markdown divider, when it's one (a placeholder of its own); else null. */
+private fun dividerAt(rt: RichText, s: Int, e: Int): String? {
+    if (e != s + 1 || rt.text[s] != IMAGE_CHAR) return null
+    return if (rt.spans.any { it.start == s && it.type == SpanType.DIVIDER }) "---" else null
+}
+
+/** The block (quote, code, callout) the paragraph starting at [s] is, or null. */
+private fun blockKind(rt: RichText, s: Int): String? = rt.spans.firstOrNull { it.type == SpanType.BLOCK && it.start == s }?.value
 
 private fun inlineMarkdown(rt: RichText, s: Int, e: Int, escapeStart: Boolean, inHeading: Boolean): String {
     fun lookAt(i: Int): Look {
@@ -58,7 +96,10 @@ private fun inlineMarkdown(rt: RichText, s: Int, e: Int, escapeStart: Boolean, i
     var i = s
     while (i < e) {
         if (rt.text[i] == IMAGE_CHAR) {
-            rt.spans.firstOrNull { it.type == SpanType.IMAGE && it.start == i }?.let { sb.append("![](images/${it.value})") }
+            // a resized picture keeps its size as an <img> tag (Markdown's own syntax has none)
+            rt.spans.firstOrNull { it.type == SpanType.IMAGE && it.start == i }?.let {
+                sb.append(if (it.width in 1..99) "<img src=\"images/${it.value}\" width=\"${it.width}%\">" else "![](images/${it.value})")
+            }
             i++; continue
         }
         val look = lookAt(i)
@@ -88,7 +129,8 @@ private fun escape(s: String, atLineStart: Boolean): String {
     val b = StringBuilder()
     for (c in s) { if (c in "\\*_~`<[") b.append('\\'); b.append(c) }
     // a line starting "#", "-", "+" or "1." would turn into a heading or list
-    if (atLineStart && Regex("^(#|[-+] |\\d+\\. )").containsMatchIn(b)) b.insert(0, '\\')
+    // (or, a line of "---", a divider; one starting ">" or "```", a quote or code)
+    if (atLineStart && MARKDOWN_START.containsMatchIn(b)) b.insert(0, '\\')
     return b.toString()
 }
 
@@ -103,31 +145,69 @@ fun markdownToNote(md: String, fallbackTitle: String, id: String, now: Long): No
     return Note(id, title, fromMarkdown(rest.joinToString("\n")), created = now, edited = now)
 }
 
-/** Markdown read back into a note body: headings, lists, checklists, bold, italic, strikethrough, code and mi's own tags. */
+/** Markdown read back into a note body: headings, lists, checklists, quotes, callouts, code blocks, dividers, bold, italic, strikethrough, code and mi's own tags. */
 fun fromMarkdown(md: String): RichText {
     val text = StringBuilder()
     val spans = ArrayList<Span>()
-    md.replace("\r\n", "\n").lines().forEachIndexed { li, rawLine ->
+    val all = md.replace("\r\n", "\n").lines()
+    // dividers, quotes, callouts and code first: a divider becomes one placeholder line (the blank lines Markdown needs
+    // around it go), the others lines that know their block (a quote's blank line after it goes too)
+    val lines = ArrayList<Any>() // a Line, or a Span for a divider
+    var k = 0
+    while (k < all.size) {
+        val l = all[k]
+        val t = l.trim()
+        if (t.startsWith("```")) {
+            k++
+            while (k < all.size && all[k].trim() != "```") { lines += Line(all[k], BlockKinds.CODE, raw = true); k++ }
+            k++ // the closing fence
+            continue
+        }
+        if (t.startsWith(">")) {
+            val callout = CALLOUT_LINE.matches(t)
+            if (callout) k++
+            while (k < all.size && all[k].trim().startsWith(">")) {
+                lines += Line(all[k].trim().removePrefix(">").removePrefix(" "), if (callout) BlockKinds.CALLOUT else BlockKinds.QUOTE)
+                k++
+            }
+            if (k < all.size && all[k].isBlank() && k + 1 < all.size) k++
+            continue
+        }
+        if (DIVIDER_LINE.matches(t)) {
+            if ((lines.lastOrNull() as? Line)?.let { it.text.isEmpty() && it.block == null } == true) lines.removeAt(lines.lastIndex)
+            lines += Span(0, 0, SpanType.DIVIDER)
+            k++
+            if (k < all.size && all[k].isBlank()) k++
+            continue
+        }
+        lines += Line(l); k++
+    }
+    lines.forEachIndexed { li, item ->
         if (li > 0) text.append('\n')
+        if (item is Span) { spans += item.copy(start = text.length, end = text.length + 1); text.append(IMAGE_CHAR); return@forEachIndexed }
+        val ln = item as Line
         val lineStart = text.length
+        if (ln.raw) { text.append(ln.text); spans += Span(lineStart, text.length, SpanType.BLOCK, ln.block!!); return@forEachIndexed }
+        val rawLine = ln.text
         var line = rawLine.removeSuffix("  ")
         val indent = line.takeWhile { it == ' ' }.length
         line = line.trimStart(' ')
         var heading = 0f
         var para: Span? = null
         val level = (indent / 2).coerceAtMost(6)
-        Regex("^[-*+] \\[([ xX])] ").find(line)?.let { m ->
+        CHECK_ITEM.find(line)?.let { m ->
             para = Span(0, 0, SpanType.PARA, "check", level, checked = m.groupValues[1] != " "); line = line.substring(m.range.last + 1)
-        } ?: Regex("^[-*+] ").find(line)?.let { m ->
+        } ?: BULLET_ITEM.find(line)?.let { m ->
             para = Span(0, 0, SpanType.PARA, "bullet", level); line = line.substring(m.range.last + 1)
-        } ?: Regex("^\\d+[.)] ").find(line)?.let { m ->
+        } ?: NUMBER_ITEM.find(line)?.let { m ->
             para = Span(0, 0, SpanType.PARA, "number", (indent / 3).coerceAtMost(6)); line = line.substring(m.range.last + 1)
-        } ?: Regex("^(#{1,6}) ").find(line)?.let { m ->
+        } ?: HEADING.find(line)?.let { m ->
             heading = when (m.groupValues[1].length) { 1 -> 2f; 2 -> 1.5f; else -> 1.25f }; line = line.substring(m.range.last + 1)
         }
         parseInline(line, text, spans)
         val lineEnd = text.length
         para?.let { spans += it.copy(start = lineStart, end = lineEnd) }
+        ln.block?.let { spans += Span(lineStart, lineEnd, SpanType.BLOCK, it) }
         if (heading > 0f && lineEnd > lineStart) {
             spans += Span(lineStart, lineEnd, SpanType.SIZE, heading.toString())
             spans += Span(lineStart, lineEnd, SpanType.WEIGHT, if (heading >= 2f) "800" else "700")
@@ -135,6 +215,20 @@ fun fromMarkdown(md: String): RichText {
     }
     return RichText(text.toString(), spans)
 }
+
+// what a line starts with, in Markdown (built once: an import or export runs them on every line)
+/** A start a plain line must not have, or it would read back as Markdown: a heading, a list, a divider, a quote, code. */
+private val MARKDOWN_START = Regex("^(#|[-+] |\\d+\\. |-{3,}$|\\*{3,}$|_{3,}$|>|```)")
+private val CHECK_ITEM = Regex("^[-*+] \\[([ xX])] ")
+private val BULLET_ITEM = Regex("^[-*+] ")
+private val NUMBER_ITEM = Regex("^\\d+[.)] ")
+private val HEADING = Regex("^(#{1,6}) ")
+private val DIVIDER_LINE = Regex("^(-{3,}|\\*{3,}|_{3,})$")
+/** A GitHub alert's first line ("> [!NOTE]", or TIP, IMPORTANT, WARNING, CAUTION): a callout. */
+private val CALLOUT_LINE = Regex("^>\\s*\\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)]\\s*$", RegexOption.IGNORE_CASE)
+
+/** A line of imported text, the block it's in, and whether it's [raw] (code: no Markdown read in it). */
+private data class Line(val text: String, val block: String? = null, val raw: Boolean = false)
 
 private val INLINE = listOf(
     Regex("\\*\\*(.+?)\\*\\*") to { s: Int, e: Int -> listOf(Span(s, e, SpanType.WEIGHT, "700")) },

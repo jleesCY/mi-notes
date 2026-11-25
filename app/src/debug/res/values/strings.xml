@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- debug builds install beside the release app under a short name -->
-    <string name="app_name">mi. dev</string>
+    <string name="app_name">mi. Notes dev</string>
 </resources>

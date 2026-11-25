@@ -4,6 +4,7 @@ import { Footer } from "@/components/footer";
 import { Navbar } from "@/components/navbar";
 import { useHighlight } from "@/hooks/useHighlight";
 import { motion } from "framer-motion";
+import { DeviceMockup } from "@/components/device-mockup";
 import {
   ArrowUp,
   Bold,
@@ -35,6 +36,7 @@ import {
   Redo2,
   RefreshCw,
   RotateCcw,
+  ScanText,
   Search,
   Settings2,
   Share2,
@@ -46,12 +48,6 @@ import {
   Upload,
 } from "lucide-react";
 
-const getAssetPath = (path: string) => {
-  const isProd = process.env.NODE_ENV === 'production';
-  const repoName = process.env.NEXT_PUBLIC_REPO_NAME || "mi-notes";
-  const basePath = isProd ? `/${repoName}` : "";
-  return `${basePath}${path}`;
-};
 
 export default function UserDocs() {
   useHighlight();
@@ -96,7 +92,7 @@ export default function UserDocs() {
                     <div className="space-y-4">
                       <GuideItem icon={<Plus size={18} />} title="New Note" desc="Tap + in the middle of the Pill. The note opens with the keyboard up, in the folder you're looking at." />
                       <GuideItem icon={<Search size={18} />} title="Search" desc="Tap the magnifier, or hold the Pill: it widens into a search field and your notes narrow as you type." />
-                      <GuideItem icon={<MousePointer2 size={18} />} title="The ⋮ Menu" desc="New Checklist, New Folder, and the view: Layout (Staggered, Grid or List) and Sort By (Manual, Edited, Created or Title)." />
+                      <GuideItem icon={<MousePointer2 size={18} />} title="The ⋮ Menu" desc="New Checklist, New Folder, Scan with Camera and Scan from Files (the text becomes a new note), and the view: Layout (Staggered, Grid or List) and Sort By (Manual, Edited, Created or Title)." />
                       <GuideItem icon={<ChevronRight size={18} />} title="Swipe Right" desc="Recently Deleted comes in from the left with your finger. Let go past the tick to open it." />
                       <GuideItem icon={<ChevronRight size={18} className="rotate-180" />} title="Swipe Left" desc="Settings comes in from the right. Inside a section, swipe its Pill right to go up a level." />
                     </div>
@@ -139,10 +135,10 @@ export default function UserDocs() {
                     <GuideItem icon={<CheckSquare size={18} />} title="Checklist" desc="Turn the line into a checklist item." />
                     <GuideItem icon={<List size={18} />} title="Bullets" desc="Turn the line into a bulleted list." />
                     <GuideItem icon={<ListOrdered size={18} />} title="Numbers" desc="Turn the line into a numbered list." />
-                    <GuideItem icon={<Plus size={18} />} title="Insert" desc="Add a divider, quote, code block or callout." />
+                    <GuideItem icon={<Plus size={18} />} title="Insert" desc="Add a divider, quote, code block or callout, or scan text in. Closing it brings the keyboard back." />
                   </div>
                   <div className="p-4 rounded-xl border border-outline-variant bg-surface-container-high text-[10px] sm:text-xs text-on-surface-variant">
-                    <p><strong>At the Top:</strong> the note&apos;s folder, when it was edited and how many words it has. The pin pins it; ⋮ opens the same menu as holding the note on the home page.</p>
+                    <p><strong>At the Top:</strong> the note&apos;s folder, when it was edited and how many words it has. The pin pins it; ⋮ puts the keyboard away and opens the same menu as holding the note on the home page.</p>
                   </div>
                 </div>
               </div>
@@ -204,6 +200,9 @@ export default function UserDocs() {
                       <GuideItem icon={<Quote size={18} />} title="Quote" desc="Sets a paragraph apart with a bar at its side." />
                       <GuideItem icon={<Code2 size={18} />} title="Code" desc="Monospaced, on a tinted block, with no autocorrect or capital letters getting in the way." />
                       <GuideItem icon={<Info size={18} />} title="Callout" desc="A tinted note with an accent bar, for the line you mustn't miss." />
+                    </div>
+                    <div id="scan">
+                      <GuideItem icon={<ScanText size={18} />} title="Scan Text" desc="Scan with Camera takes a photo with your camera app; Scan from Files picks a picture. Its text goes in at the cursor, read on your phone: nothing is sent anywhere. Lists come in as the page has them, read from the marks themselves: boxes as a checklist (ticked ones ticked), dots and dashes as bullets, 1. and 2) as numbers, and indents as levels. A list with no marks at all comes in as bullets. Headings stay headings, two columns are read one after the other, and a table's rows come in as lines, their cells split by |. Shadows, a tilted photo and light writing on a dark board are fine. From the home page's ⋮ menu, a scan becomes a new note, its heading the title." />
                     </div>
                   </div>
                 </div>
@@ -477,32 +476,6 @@ function SettingItem({ title, desc, id: given }: { title: string, desc: string, 
     <div id={id} className="p-6 rounded-2xl bg-surface-container-high border border-outline-variant shadow-sm hover:border-primary/40 transition-colors scroll-mt-28">
       <h4 className="font-bold text-sm mb-2">{title}</h4>
       <p className="text-xs text-on-surface-variant leading-relaxed font-medium">{desc}</p>
-    </div>
-  );
-}
-
-function DeviceMockup({ src, color }: { src: string, color?: string }) {
-  const glowStyles: any = {
-    blue: "bg-primary/20 shadow-primary/30",
-    purple: "bg-tertiary/20 shadow-tertiary/30",
-    pink: "bg-tertiary/20 shadow-tertiary/30",
-    orange: "bg-secondary/20 shadow-secondary/30",
-    cyan: "bg-secondary/20 shadow-secondary/30",
-    green: "bg-secondary/20 shadow-secondary/30",
-  };
-
-  const glowClass = (color && glowStyles[color]) ? glowStyles[color].split(' ')[0] : 'bg-primary-container';
-
-  return (
-    <div className="relative group flex justify-center">
-      <div className={`absolute -inset-10 ${glowClass} rounded-full blur-[80px] group-hover:opacity-100 transition-opacity opacity-50`} />
-      <div className={`relative w-[220px] sm:w-[280px] bg-black rounded-[2rem] p-2 shadow-2xl border-[4px] border-[#1a1a1a] overflow-hidden transition-transform duration-500 group-hover:scale-105 group-hover:-rotate-1`}>
-        <img
-          src={getAssetPath(src)}
-          alt="mi. App Screenshot"
-          className="w-full h-auto block rounded-[1.4rem]"
-        />
-      </div>
     </div>
   );
 }

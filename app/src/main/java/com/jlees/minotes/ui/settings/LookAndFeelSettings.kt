@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.jlees.minotes.NotesViewModel
+import com.jlees.minotes.data.PanArea
 import com.jlees.minotes.data.Settings
 import com.jlees.minotes.data.ThemeMode
 import com.jlees.minotes.logic.ACCENTS
@@ -27,43 +28,48 @@ import com.jlees.minotes.ui.common.*
 fun lookAndFeelSection(vm: NotesViewModel): SettingsSection {
     val s = vm.settings
     fun set(f: Settings.() -> Settings) = vm.updateSettings(f)
-    return SettingsSection("look", "Look & Feel", "palette", "How mi. Notes appears", listOf(
+    return SettingsSection("look", "Look & Feel", "palette", "Colors, UI and haptics", listOfNotNull(
         SettingsHeading("Colors"),
         SettingsRow("Theme", "light dark system mode") {
             ChoiceItem("routine", "Theme", null, s.themeMode) { set { copy(themeMode = it) } }
         },
-        SettingsRow("Pure Black", "oled amoled black dark battery") {
-            if (s.themeMode != ThemeMode.LIGHT) SwitchItem("contrast", "Pure Black", "True black backgrounds in dark mode", s.pureBlack) { set { copy(pureBlack = it) } }
+        // only matters in dark: hidden in Light
+        if (s.themeMode == ThemeMode.LIGHT) null else SettingsRow("Pure Black", "oled amoled black dark battery") {
+            SwitchItem("contrast", "Pure Black", "True black backgrounds in dark mode", s.pureBlack) { set { copy(pureBlack = it) } }
         },
         SettingsRow("Accent Color", "colour wallpaper material you dynamic") { AccentItem(vm) },
         SettingsHeading("Text"),
         SettingsRow("Font Size", "text scale app") {
-            SliderItem("format_size", "Font Size", "The size of mi.'s own text", s.fontScale, 0.8f, 1.2f) { set { copy(fontScale = it) } }
+            SliderItem("format_size", "Font Size", "UI font size throughout mi. Notes", s.fontScale, 0.8f, 1.2f) { set { copy(fontScale = it) } }
         },
         SettingsRow("Font", "typeface rounded system font") { ChoiceItem("font_download", "Font", null, s.font) { set { copy(font = it) } } },
-        SettingsRow("Pan Overflowed Text", "pan long text scroll marquee overflow cut off ellipsis") {
+        SettingsHeading("Overflowed Text"),
+        SettingsRow("Pan Overflowed Text", "pan long text scroll marquee overflow cut off ellipsis slide names") {
             SwitchItem("arrow_forward", "Pan Overflowed Text", "Text that doesn't fit slides to show the rest", s.panLongText) { set { copy(panLongText = it) } }
         },
+    ) + (if (!s.panLongText) emptyList() else PanArea.entries.map { area ->
+        // where it pans: only shown with Pan Overflowed Text on
+        SettingsRow(area.label, "pan overflowed long text scroll marquee ${area.label.lowercase()}") {
+            SwitchItem(area.icon, area.label, null, area in s.panAreas) { on -> set { copy(panAreas = if (on) panAreas + area else panAreas - area) } }
+        }
+    }) + listOf(
         SettingsHeading("Layout"),
         SettingsRow("Corners", "radius shape round square") {
             ChoiceItem("rounded_corner", "Corners", null, listOf("0" to "Square", "12" to "Soft", "28" to "Round"), s.cornerRadius.toString()) { set { copy(cornerRadius = it.toInt()) } }
         },
         SettingsRow("List Spacing", "spacing density padding compact airy") {
-            ChoiceItem("density_medium", "List Spacing", "How much room list rows have", s.uiPadding) { set { copy(uiPadding = it) } }
+            ChoiceItem("density_medium", "List Spacing", "How much space between list items", s.uiPadding) { set { copy(uiPadding = it) } }
         },
         SettingsRow("List Style", "table cards rows plain flat") {
-            ChoiceItem("list", "List Style", "How notes look in the list layout", s.listStyle) { set { copy(listStyle = it) } }
-        },
-        SettingsRow("Auto Hide Pill", "pill scroll hide minimize recall") {
-            SwitchItem("toolbar", "Auto Hide Pill", "Tuck the Pill away while scrolling down", s.hidePillOnScroll) { set { copy(hidePillOnScroll = it) } }
+            ChoiceItem("list", "List Style", "How the note list and Recently Deleted look", s.listStyle) { set { copy(listStyle = it) } }
         },
         SettingsRow("Status Bar", "clock battery immersive") { SwitchItem("battery_charging_full", "Status Bar", null, s.showStatusBar) { set { copy(showStatusBar = it) } } },
         SettingsRow("Rotate Screen", "landscape portrait orientation sideways auto rotate lock") {
-            SwitchItem("screen_rotation", "Rotate Screen", "Turn mi. sideways with your phone", s.rotateScreen) { set { copy(rotateScreen = it) } }
+            SwitchItem("screen_rotation", "Rotate Screen", "Turn mi. Notes sideways with your phone", s.rotateScreen) { set { copy(rotateScreen = it) } }
         },
         SettingsHeading("Feedback"),
         SettingsRow("Gesture Haptics", "haptic feedback vibration vibrate haptics touch feel") {
-            SwitchItem("vibration", "Gesture Haptics", "A light tap when a gesture will act", s.hapticFeedback) { set { copy(hapticFeedback = it) } }
+            SwitchItem("vibration", "Gesture Haptics", "Haptic feedback when gestures are performed", s.hapticFeedback) { set { copy(hapticFeedback = it) } }
         },
     ))
 }
