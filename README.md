@@ -15,6 +15,10 @@
 </p>
 
 <p align="center">
+  <a href="https://rookieenough.github.io/Orion-Data/redirect.html?id=mi-notes"><img src="https://raw.githubusercontent.com/RookieEnough/Orion-Store/refs/heads/main/assets/orion-badge.png" alt="Get it on Orion Store" height="52"></a>
+</p>
+
+<p align="center">
   <img src="docs/public/images/home.jpg" width="240" alt="Your notes in folders, with the Pill at the bottom" />
   <img src="docs/public/images/editor.jpg" width="240" alt="A note with headings, a list, a callout and a checklist" />
   <img src="docs/public/images/format.jpg" width="240" alt="The Aa panel: styles, sizes, colours, alignment and lists" />
