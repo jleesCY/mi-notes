@@ -19,10 +19,10 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.util.UUID
 
-fun backupSection(vm: NotesViewModel) = SettingsSection("data", "Backup & Reset", "save", "Export, import, reset", listOf(
+fun backupSection(vm: NotesViewModel) = SettingsSection("data", "Backup & Reset", "save", "Back up, restore, reset", listOf(
     SettingsHeading("Backup"),
-    SettingsRow("Export Settings", "export backup save file notes pictures") { BackupItem(vm) },
-    SettingsRow("Import Settings", "import restore load backup file") { RestoreItem(vm) },
+    SettingsRow("Back Up", "backup export save file notes pictures settings") { BackupItem(vm) },
+    SettingsRow("Restore", "restore import load backup file") { RestoreItem(vm) },
     SettingsHeading("Markdown"),
     SettingsRow("Export as Markdown", "export markdown md files zip obsidian") { MarkdownExportItem(vm) },
     SettingsRow("Import Notes", "import markdown md text txt files") { ImportNotesItem(vm) },
@@ -31,7 +31,7 @@ fun backupSection(vm: NotesViewModel) = SettingsSection("data", "Backup & Reset"
         Item("restart_alt", "Reset All Settings", "Back to defaults; your notes and folders are kept", danger = true, onClick = {
             // the default Keep Deleted Notes can be shorter than yours: then older deleted notes go, and it says so
             val notes = vm.expiringSentence(com.jlees.minotes.data.Settings().keepDeleted) ?: "Your notes and folders stay as they are."
-            vm.ask = Ask.Alert("Are you sure?", "Every setting goes back to its default. $notes", "Reset", destructive = true) { vm.resetSettings() }
+            vm.ask = Ask.Alert("Reset All Settings?", "Every setting goes back to its default. $notes", "Reset", destructive = true) { vm.resetSettings() }
         })
     },
     SettingsRow("Wipe All Data", "erase delete everything wipe") { WipeItem(vm) },
@@ -41,7 +41,7 @@ fun backupSection(vm: NotesViewModel) = SettingsSection("data", "Backup & Reset"
 private fun WipeItem(vm: NotesViewModel) {
     val activity = LocalContext.current as android.app.Activity
     Item("delete", "Wipe All Data", "Delete every note, folder, picture and setting", danger = true, onClick = {
-        vm.ask = Ask.Alert("Are you sure?", "Every note, folder, picture and setting will be deleted for good, and mi. Notes will start again as if just installed. This can't be undone.", "Wipe App", destructive = true) { vm.wipeAll(activity) }
+        vm.ask = Ask.Alert("Wipe mi. Notes?", "Every note, folder, picture and setting will be deleted for good, and mi. Notes will start again as if just installed. This can't be undone.", "Wipe App", destructive = true) { vm.wipeAll(activity) }
     })
 }
 
@@ -54,10 +54,10 @@ private fun BackupItem(vm: NotesViewModel) {
         val b = vm.backup()
         scope.launch {
             val err = withContext(Dispatchers.IO) { runCatching { DataTransfer.exportTo(ctx, uri, b) }.exceptionOrNull() }
-            Notices.show(if (err == null) "Backed up" else "Couldn't save the backup", done = err == null)
+            Notices.show(if (err == null) "Saved backup" else "Couldn't save the backup", done = err == null)
         }
     }
-    Item("upload", "Export Settings", "Save your settings and notes to a file", onClick = { saver.launch("mi-notes-${LocalDate.now()}.minotesdata") })
+    Item("upload", "Back Up", "Save your notes and settings to a file", onClick = { saver.launch("mi-notes-${LocalDate.now()}.minotesdata") })
 }
 
 @Composable
@@ -72,12 +72,12 @@ private fun RestoreItem(vm: NotesViewModel) {
                     val n = b.notes.size
                     // its Keep Deleted Notes can be shorter than yours: then older deleted notes go, and it says so
                     val gone = vm.expiringSentence(b.settings.keepDeleted, b.notes)
-                    vm.ask = Ask.Alert("Import Settings?", "This replaces your settings and adds ${if (n == 1) "1 note" else "$n notes"}. ${gone ?: "Notes you already have stay as they are."}", "Import", destructive = gone != null) { vm.restore(b) }
+                    vm.ask = Ask.Alert("Restore Backup?", "This replaces your settings and adds ${if (n == 1) "1 note" else "$n notes"}. ${gone ?: "Notes you already have stay as they are."}", "Restore", destructive = gone != null) { vm.restore(b) }
                 }
                 .onFailure { e -> vm.ask = Ask.Alert((e as? ImportError)?.title ?: "Couldn't Import", (e as? ImportError)?.message ?: "This file couldn't be read.") }
         }
     }
-    Item("download", "Import Settings", "Restore from an exported file", onClick = { opener.launch(arrayOf("*/*")) })
+    Item("download", "Restore", "Bring back everything from a backup file", onClick = { opener.launch(arrayOf("*/*")) })
 }
 
 @Composable

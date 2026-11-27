@@ -175,11 +175,34 @@ export default function Home() {
         </div>
       </section>
 
+      {/* More mi. Apps: the other released apps in the family (mi-brand §10) */}
+      <section id="more-apps" className="max-w-6xl mx-auto px-6 pb-24">
+        <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tighter mb-8 text-center">More mi. Apps</h2>
+        <div className="grid sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
+          {MORE_APPS.map((a) => (
+            <a key={a.name} href={a.site} className="flex items-center gap-4 p-5 rounded-3xl bg-surface-container hover:bg-surface-container-high transition-colors">
+              <img src={a.icon} alt={`${a.name} icon`} className="w-14 h-14 rounded-2xl shrink-0" />
+              <span className="min-w-0">
+                <span className="block font-extrabold text-lg">{a.name}</span>
+                <span className="block text-sm text-on-surface-variant">{a.line}</span>
+              </span>
+              <ChevronRight size={20} className="ml-auto shrink-0 text-on-surface-variant" />
+            </a>
+          ))}
+        </div>
+      </section>
+
       {/* Footer */}
       <Footer />
     </main>
   );
 }
+
+/** The other released mi. apps (the family table in the mi-brand skill), each linking to its own site. */
+const MORE_APPS = [
+  { name: "mi. Browser", line: "A simple, private browser built around one Pill", site: "https://mi-app-hub.github.io/mi-browser/", icon: "https://mi-app-hub.github.io/mi-browser/icon.png" },
+  { name: "mi. Budget", line: "Your purchases, budgets and subscriptions, private on your phone", site: "https://mi-app-hub.github.io/mi-budget/", icon: "https://mi-app-hub.github.io/mi-budget/icon.svg" },
+];
 
 /** Your data: where notes live and the ways out (backups, Markdown, sharing). */
 function YourData() {

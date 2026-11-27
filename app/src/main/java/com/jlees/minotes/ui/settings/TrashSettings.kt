@@ -4,7 +4,7 @@ package com.jlees.minotes.ui.settings
 import com.jlees.minotes.NotesViewModel
 import com.jlees.minotes.notes.trashed
 
-fun trashSection(vm: NotesViewModel) = SettingsSection("trash", "Recently Deleted", "delete", "How deleted notes are kept", listOf(
+fun trashSection(vm: NotesViewModel) = SettingsSection("deleted", "Recently Deleted", "delete", "How deleted notes are kept", listOf(
     SettingsRow("Keep Deleted Notes", "trash recently deleted days week month keep how long") {
         ChoiceItem("history", "Keep Deleted Notes", "How long deleted notes stay in Recently Deleted", vm.settings.keepDeleted) { vm.setKeepDeleted(it) }
     },

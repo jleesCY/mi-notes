@@ -41,6 +41,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -126,6 +127,8 @@ data class UiConfig(
     /** Pure Black is on and showing: backgrounds that fill the screen are true black. */
     val pureBlack: Boolean = false,
     val listStyle: com.jlees.minotes.data.ListStyle = com.jlees.minotes.data.ListStyle.CARDS,
+    /** The accent exactly as picked (null for Adaptive): only the main action wears it, see [mainAction]. */
+    val vivid: Color? = null,
 ) {
     // Type weights
     val regular get() = FontWeight.W400
@@ -135,6 +138,14 @@ data class UiConfig(
 }
 
 val LocalUi = staticCompositionLocalOf { UiConfig() }
+
+/**
+ * The main action's fill (the main bar's +): the accent itself, as vivid as the app icon's, in light and dark. The
+ * scheme's primary is a pastel of it in dark mode, too soft for the one thing that should stand out.
+ */
+val UiConfig.mainAction: Color get() = vivid ?: cs.primary
+/** What sits on [mainAction]: white, or black on a light accent (yellow). */
+val UiConfig.onMainAction: Color get() = if (vivid == null) cs.onPrimary else if (vivid.luminance() > 0.6f) Color.Black else Color.White
 
 /**
  * Whether one-line text that doesn't fit pans here ([panIfLong]) or ends in "…". Each place that may pan (Settings, the

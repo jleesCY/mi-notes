@@ -28,9 +28,6 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -291,15 +288,8 @@ private fun FolderChips(vm: NotesViewModel) {
     LazyRow(Modifier.fillMaxWidth(), listState, contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item(key = "all") { Chip("All Notes", live.size, vm.folder == null, onClick = { vm.showFolder(null) }) }
         items(vm.notes.folders, key = { it.id }) { f ->
-            var menu by remember { mutableStateOf(false) }
-            Box {
-                Chip(f.name, live.count { it.folder == f.id }, vm.folder == f.id,
-                    onClick = { vm.showFolder(f.id) }, onLongClick = { haptics?.longPress(); menu = true })
-                DropdownMenu(menu, { menu = false }, shape = RoundedCornerShape(16.dp), containerColor = ui.cs.surfaceContainerHigh) {
-                    DropdownMenuItem({ Txt("Rename", 14f, ui.cs.onSurface, ui.semibold) }, { menu = false; vm.ask = Ask.RenameFolder(f.id) }, leadingIcon = { Sym("edit", 20f, ui.cs.onSurfaceVariant) })
-                    DropdownMenuItem({ Txt("Delete Folder", 14f, ui.cs.error, ui.semibold) }, { menu = false; vm.deleteFolder(f.id) }, leadingIcon = { Sym("delete", 20f, ui.cs.error) })
-                }
-            }
+            Chip(f.name, live.count { it.folder == f.id }, vm.folder == f.id,
+                onClick = { vm.showFolder(f.id) }, onLongClick = { haptics?.longPress(); vm.ask = Ask.FolderMenu(f.id) })
         }
         item(key = "new") {
             Box(Modifier.size(40.dp).clip(CircleShape).background(ui.cs.surfaceContainerHigh).touchable { vm.ask = Ask.NewFolder() }, contentAlignment = Alignment.Center) {

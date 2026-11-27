@@ -72,7 +72,8 @@ fun App(vm: NotesViewModel, activity: Activity) {
         style = if (s.accentColor == GRAY_ACCENT) PaletteStyle.Monochrome else PaletteStyle.Vibrant,
     )
     val scheme = if (dark && s.pureBlack) remember(baseScheme) { pureBlack(baseScheme) } else baseScheme
-    val ui = UiConfig(scheme, dark, s.cornerRadius, s.fontScale, s.uiPadding, appFont(s.font), pureBlack = dark && s.pureBlack, listStyle = s.listStyle)
+    val ui = UiConfig(scheme, dark, s.cornerRadius, s.fontScale, s.uiPadding, appFont(s.font), pureBlack = dark && s.pureBlack, listStyle = s.listStyle,
+        vivid = if (s.accentColor == DYNAMIC_ACCENT && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) null else Color(hexColor(s.accentColor)))
     MaterialExpressiveTheme(colorScheme = scheme, motionScheme = MotionScheme.expressive(), typography = appTypography(s.font)) {
     CompositionLocalProvider(LocalUi provides ui) {
         val scope = rememberCoroutineScope()

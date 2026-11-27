@@ -41,12 +41,12 @@ fun SettingsView(vm: NotesViewModel) {
 
     val groups = listOf(notesSection(vm), lookAndFeelSection(vm), gesturesSection(vm), trashSection(vm), backupSection(vm), aboutSection(vm))
     // the main page's headings, each over its own block of sections (by id): a new section is added to one here. The
-    // family's order: Appearance, Navigation, Saved, General (housekeeping last). Notes (how the home page's notes look,
-    // mostly) sits under Appearance after Look & Feel, as the browser's Home Page does
+    // family's order (mi-brand §4a): the app's own heading first, then Appearance, Navigation, Saved, General
     val headings = listOf(
-        "Appearance" to listOf("look", "notes"),
+        "Notes" to listOf("notes"),
+        "Appearance" to listOf("look"),
         "Navigation" to listOf("gestures"),
-        "Saved" to listOf("trash"),
+        "Saved" to listOf("deleted"),
         "General" to listOf("data", "about"),
     ).map { (title, ids) -> title to ids.mapNotNull { id -> groups.firstOrNull { it.id == id } } }.filter { it.second.isNotEmpty() }
 

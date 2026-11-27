@@ -213,9 +213,11 @@ fun MainBarButtons(onSearch: () -> Unit, onNew: () -> Unit, onMenu: () -> Unit, 
         IconButton(onClick = onSearch, Modifier.padding(horizontal = 4.dp).size(52.dp).pressScale(pressSearch), interactionSource = pressSearch) { Sym("search", 24f, ui.cs.onSurface, label = "Search notes") }
         FilledIconButton(
             onClick = onNew, modifier = addModifier.size(56.dp).pressScale(pressNew), interactionSource = pressNew,
-            // the main action in the accent itself (primary / onPrimary), so it stands out in every theme and accent
-            colors = IconButtonDefaults.filledIconButtonColors(containerColor = ui.cs.primary, contentColor = ui.cs.onPrimary),
-        ) { Sym("add", 30f, ui.cs.onPrimary, label = "New note") }
+            // shaped by the Corners setting, as everything rounded is: a circle at Round, a rounded square at Soft
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(ui.radius.dp),
+            // the main action in the accent itself (mainAction: the seed as picked), so it stands out in every theme
+            colors = IconButtonDefaults.filledIconButtonColors(containerColor = ui.mainAction, contentColor = ui.onMainAction),
+        ) { Sym("add", 30f, ui.onMainAction, label = "New note") }
         IconButton(onClick = onMenu, menuModifier.padding(horizontal = 4.dp).size(52.dp).pressScale(pressMenu), interactionSource = pressMenu) {
             Sym(if (menuOpen) "close" else "more_vert", 24f, ui.cs.onSurface, label = if (menuOpen) "Close menu" else "Menu")
         }

@@ -315,6 +315,15 @@ export default function UserDocs() {
               </div>
 
               <div className="grid gap-12">
+                <SettingsSection title="Notes" icon={<StickyNote size={20} />}>
+                  <SettingItem title="Layout" desc="Staggered cards fit their note; Grid cards are all one size; List shows one row per note." />
+                  <SettingItem title="Sort By" desc="Manual (your order), Edited, Created or Title. Pinned notes always come first." />
+                  <SettingItem title="Preview Lines" desc="How much of each note its card shows: 3, 6, 9 or 12 lines." />
+                  <SettingItem title="Show Dates" desc="When each note was last edited, on its card." />
+                  <SettingItem title="Text Size" desc="The size of the text in your notes, 80% to 160%." />
+                  <SettingItem title="Checked Items to Bottom" desc="Ticked items move below the rest of their checklist." />
+                </SettingsSection>
+
                 <SettingsSection title="Look & Feel" icon={<Palette size={20} />}>
                   <SettingItem title="Theme" desc="Light, Dark, or follow the System." />
                   <SettingItem title="Pure Black" desc="True black backgrounds in dark mode, for OLED screens." />
@@ -330,15 +339,6 @@ export default function UserDocs() {
                   <SettingItem title="Gesture Haptics" desc="Haptic feedback when gestures are performed." />
                 </SettingsSection>
 
-                <SettingsSection title="Notes" icon={<StickyNote size={20} />}>
-                  <SettingItem title="Layout" desc="Staggered cards fit their note; Grid cards are all one size; List shows one row per note." />
-                  <SettingItem title="Sort By" desc="Manual (your order), Edited, Created or Title. Pinned notes always come first." />
-                  <SettingItem title="Preview Lines" desc="How much of each note its card shows: 3, 6, 9 or 12 lines." />
-                  <SettingItem title="Show Dates" desc="When each note was last edited, on its card." />
-                  <SettingItem title="Text Size" desc="The size of the text in your notes, 80% to 160%." />
-                  <SettingItem title="Checked Items to Bottom" desc="Ticked items move below the rest of their checklist." />
-                </SettingsSection>
-
                 <SettingsSection title="Gestures" icon={<Hand size={20} />}>
                   <SettingItem title="Long Press to Search" desc="Hold the home Pill to search your notes." />
                   <SettingItem title="Swipe Rows" desc="In the List layout, swipe a note left to delete it or right to pin it." />
@@ -350,8 +350,8 @@ export default function UserDocs() {
                 </SettingsSection>
 
                 <SettingsSection title="Backup & Reset" icon={<RefreshCw size={20} />}>
-                  <SettingItem title="Export Settings" desc="Save your settings and notes to one .minotesdata file." />
-                  <SettingItem title="Import Settings" desc="Restore from an exported file: your settings are replaced and its notes are added beside yours." />
+                  <SettingItem title="Back Up" desc="Save your notes and settings to one .minotesdata file." />
+                  <SettingItem title="Restore" desc="Bring back everything from a backup file: your settings are replaced and its notes are added beside yours." />
                   <SettingItem title="Export as Markdown" desc="Every note as a .md file, in a zip, for any notes app." />
                   <SettingItem title="Import Notes" desc="Markdown or text files become notes in the folder showing." />
                   <SettingItem title="Reset All Settings" desc="Every setting back to its default. Your notes and folders stay." />
@@ -384,7 +384,7 @@ export default function UserDocs() {
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-left">
                   <div id="backups">
-                    <GuideItem icon={<Upload size={18} />} title="Backups" desc="Settings › Backup & Reset › Export Settings saves everything to one .minotesdata file. Import Settings on a new phone brings it all back; notes you already have stay." />
+                    <GuideItem icon={<Upload size={18} />} title="Backups" desc="Settings › Backup & Reset › Back Up saves everything to one .minotesdata file. Restore on a new phone brings it all back; notes you already have stay." />
                   </div>
                   <div id="markdown">
                     <GuideItem icon={<FileText size={18} />} title="Markdown" desc="Export as Markdown gives you every note as a .md file in a zip. Lists, checklists, bold, italics, dividers, quotes, code and callouts (as GitHub's > [!NOTE]) come out as Markdown, and come back the same way with Import Notes." />

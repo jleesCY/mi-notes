@@ -39,7 +39,7 @@ fun TrashView(vm: NotesViewModel) {
                     // it can't be undone, so it asks; the row springs back meanwhile (and goes once you say yes)
                     askDelete = { answer ->
                         answer(false)
-                        vm.ask = Ask.Alert("Are you sure?", "\"${displayTitle(n)}\" will be deleted for good. This can't be undone.", "Delete Forever", destructive = true) { vm.deleteForever(n.id) }
+                        vm.ask = Ask.Alert("Delete Forever?", "\"${displayTitle(n)}\" will be deleted for good. This can't be undone.", "Delete Forever", destructive = true) { vm.deleteForever(n.id) }
                     },
                 ) { ListRowPan {
                     Row(

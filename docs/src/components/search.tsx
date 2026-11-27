@@ -74,8 +74,8 @@ const MOCK_DATA: SearchResult[] = [
   { title: "Empty Recently Deleted", type: "Settings", href: "/user#setting-empty-recently-deleted", excerpt: "Delete every deleted note for good." },
 
   // Backup & Reset
-  { title: "Export Settings", type: "Settings", href: "/user#setting-export-settings", excerpt: "Save your settings and notes to one file." },
-  { title: "Import Settings", type: "Settings", href: "/user#setting-import-settings", excerpt: "Restore from an exported file." },
+  { title: "Back Up", type: "Settings", href: "/user#setting-back-up", excerpt: "Save your notes and settings to one file." },
+  { title: "Restore", type: "Settings", href: "/user#setting-restore", excerpt: "Bring back everything from a backup file." },
   { title: "Export as Markdown", type: "Settings", href: "/user#setting-export-as-markdown", excerpt: "Every note as a .md file, in a zip." },
   { title: "Import Notes", type: "Settings", href: "/user#setting-import-notes", excerpt: "Markdown or text files become notes." },
   { title: "Reset All Settings", type: "Settings", href: "/user#setting-reset-all-settings", excerpt: "Back to defaults; your notes stay." },

@@ -61,7 +61,7 @@ fun Dialogs(vm: NotesViewModel) {
     val ask = shown ?: return
     val close = { vm.ask = null }
     // a form loses what was typed if the dim closed it; an alert or a picker loses nothing
-    ModalFrame(vm.ask != null, close, dismissOnScrim = ask is Ask.Alert || ask is Ask.MoveNote) {
+    ModalFrame(vm.ask != null, close, dismissOnScrim = ask is Ask.Alert || ask is Ask.MoveNote || ask is Ask.FolderMenu) {
         when (ask) {
             is Ask.RenameNote -> NameDialog("Rename Note", vm.notes[ask.id]?.title.orEmpty(), "Title", close) { vm.notes.rename(ask.id, it) }
             is Ask.NewFolder -> NameDialog("New Folder", "", "Name", close, confirm = "Create", requireText = true) { name ->
@@ -70,6 +70,7 @@ fun Dialogs(vm: NotesViewModel) {
             }
             is Ask.RenameFolder -> NameDialog("Rename Folder", vm.notes.folders.firstOrNull { it.id == ask.id }?.name.orEmpty(), "Name", close, requireText = true) { vm.notes.renameFolder(ask.id, it) }
             is Ask.MoveNote -> MoveDialog(vm, ask.id, close)
+            is Ask.FolderMenu -> FolderMenu(vm, ask.id, close)
             is Ask.Alert -> DialogCard(ask.title, actions = {
                 if (ask.confirm != null) { DialogAction("Cancel") { close() }; DialogAction(ask.confirm, ask.destructive) { close(); ask.onConfirm() } }
                 else DialogAction("Done") { close() }
@@ -91,22 +92,41 @@ private fun NameDialog(title: String, initial: String, placeholder: String, clos
     }) { ClearableField(text, { text = it }, fr, placeholder = placeholder) }
 }
 
+/** One row of a choice list (mi-brand): 48 tall, 12dp corners, a 22dp symbol, the label; [checked] marks the current
+ *  choice with the accent and a check, [danger] colours it as destructive. */
+@Composable
+private fun ChoiceRow(icon: String, label: String, checked: Boolean = false, danger: Boolean = false, onClick: () -> Unit) {
+    val ui = LocalUi.current
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).touchable(onClick = onClick).heightIn(min = 48.dp).padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Sym(icon, 22f, when { danger -> ui.cs.error; checked -> ui.cs.primary; else -> ui.cs.onSurfaceVariant }, Modifier.padding(end = 16.dp))
+        Txt(label, 15f, if (danger) ui.cs.error else ui.cs.onSurface, ui.semibold, Modifier.weight(1f), maxLines = 1)
+        if (checked) Sym("check", 20f, ui.cs.primary)
+    }
+}
+
+/** A held folder chip's choices (mi-brand's long-press choice list): its name and count, then what to do with it. */
+@Composable
+private fun FolderMenu(vm: NotesViewModel, id: String, close: () -> Unit) {
+    val ui = LocalUi.current
+    val f = vm.notes.folders.firstOrNull { it.id == id } ?: return
+    val count = vm.notes.notes.count { it.deletedAt == null && it.folder == id }
+    DialogCard(null, actions = { DialogAction("Cancel") { close() } }) {
+        Txt(f.name, 18f, ui.cs.onSurface, ui.semibold, Modifier.padding(bottom = 4.dp), maxLines = 2)
+        Txt(if (count == 1) "1 note" else "$count notes", 12f, ui.cs.onSurfaceVariant, ui.regular, Modifier.padding(bottom = 12.dp), maxLines = 1)
+        ChoiceRow("edit", "Rename Folder") { vm.ask = Ask.RenameFolder(id) }
+        ChoiceRow("delete", "Delete Folder", danger = true) { close(); vm.deleteFolder(id) }
+    }
+}
+
 @Composable
 private fun MoveDialog(vm: NotesViewModel, id: String, close: () -> Unit) {
-    val ui = LocalUi.current
     val current = vm.notes[id]?.folder
     DialogCard("Move to Folder", actions = { DialogAction("Cancel") { close() } }) {
-        @Composable
-        fun Option(icon: String, label: String, on: Boolean, onClick: () -> Unit) = Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).touchable(onClick = onClick).heightIn(min = 48.dp).padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Sym(icon, 22f, if (on) ui.cs.primary else ui.cs.onSurfaceVariant, Modifier.padding(end = 16.dp))
-            Txt(label, 15f, ui.cs.onSurface, ui.semibold, Modifier.weight(1f), maxLines = 1)
-            if (on) Sym("check", 20f, ui.cs.primary)
-        }
-        Option("notes", "No Folder", current == null) { close(); if (current != null) vm.moveTo(id, null) }
-        vm.notes.folders.forEach { f -> Option("folder", f.name, current == f.id) { close(); if (current != f.id) vm.moveTo(id, f.id) } }
-        Option("create_new_folder", "New Folder", false) { vm.ask = Ask.NewFolder(thenMove = id) }
+        ChoiceRow("notes", "No Folder", checked = current == null) { close(); if (current != null) vm.moveTo(id, null) }
+        vm.notes.folders.forEach { f -> ChoiceRow("folder", f.name, checked = current == f.id) { close(); if (current != f.id) vm.moveTo(id, f.id) } }
+        ChoiceRow("create_new_folder", "New Folder") { vm.ask = Ask.NewFolder(thenMove = id) }
     }
 }

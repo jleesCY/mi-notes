@@ -48,6 +48,8 @@ sealed interface Ask {
     /** [thenMove]: the new folder takes this note in once made (from Move to Folder). */
     data class NewFolder(val thenMove: String? = null) : Ask
     data class RenameFolder(val id: String) : Ask
+    /** A folder chip held: what to do with that folder (a choice list). */
+    data class FolderMenu(val id: String) : Ask
     data class MoveNote(val id: String) : Ask
     data class Alert(val title: String, val message: String, val confirm: String? = null, val destructive: Boolean = false, val onConfirm: () -> Unit = {}) : Ask
 }
@@ -136,7 +138,7 @@ class NotesViewModel(app: Application, private val saved: androidx.lifecycle.Sav
     /** Settings › Recently Deleted › Keep Deleted Notes: at once, or after asking when it would delete notes. */
     fun setKeepDeleted(keep: KeepDeleted) {
         val gone = expiringSentence(keep) ?: return updateSettings { copy(keepDeleted = keep) }
-        ask = Ask.Alert("Are you sure?", "$gone This can't be undone.", "Delete", destructive = true) {
+        ask = Ask.Alert("Delete Older Notes?", "$gone This can't be undone.", "Delete", destructive = true) {
             updateSettings { copy(keepDeleted = keep) }
         }
     }
@@ -210,7 +212,7 @@ class NotesViewModel(app: Application, private val saved: androidx.lifecycle.Sav
     fun deleteForever(id: String) { NoteImages.delete(getApplication(), notes.deleteForever(id)) }
 
     fun emptyTrash() {
-        ask = Ask.Alert("Are you sure?", "Every note in Recently Deleted will be deleted for good. This can't be undone.", "Empty", destructive = true) {
+        ask = Ask.Alert("Empty Recently Deleted?", "Every note in Recently Deleted will be deleted for good. This can't be undone.", "Empty", destructive = true) {
             NoteImages.delete(getApplication(), notes.emptyTrash())
         }
     }
@@ -235,7 +237,7 @@ class NotesViewModel(app: Application, private val saved: androidx.lifecycle.Sav
         val added = notes.notes.size - before
         settings = b.settings.importedOver(settings)
         notes.purge(settings.keepDeleted.days) // what the import's question said would go, goes now (not silently at the next start)
-        Notices.show(if (added == 1) "Imported 1 note" else "Imported $added notes", done = true)
+        Notices.show(if (added == 1) "Restored 1 note" else "Restored $added notes", done = true)
     }
 
     /** Notes from Import Notes, into the folder showing; [skipped] ("1 file was too big") ends the notice when set. */

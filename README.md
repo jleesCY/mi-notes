@@ -59,5 +59,9 @@ cd mi-notes
 
 How the code is organized is in the **[Developer Guide](https://mi-app-hub.github.io/mi-notes/developer)** and [CLAUDE.md](CLAUDE.md). The website lives in [`docs/`](docs) (Next.js); its colours are generated from the app's default accent by `docs/scripts/theme.mjs`.
 
+## More mi. Apps
+- [mi. Browser](https://github.com/mi-app-hub/mi-browser): a simple, private browser built around one Pill.
+- [mi. Budget](https://github.com/mi-app-hub/mi-budget): your purchases, budgets and subscriptions, private on your phone.
+
 ## License
 [MIT](LICENSE). The bundled font (Google Sans Flex, SIL Open Font License), icons (Material Symbols, Apache 2.0) and text recognition (Google ML Kit, ML Kit Terms of Service) keep their own licenses. mi. Notes collects no personal data: see the [Privacy Policy](https://mi-app-hub.github.io/mi-notes/privacy).
